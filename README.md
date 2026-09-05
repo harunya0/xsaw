@@ -8,11 +8,11 @@ files and directories on Windows and Linux.
 
 ## Features
 
-- Directory analysis
+- Fast parallel file and directory search (`fi`, alias `f`)
+- Directory analysis and size distribution (`du`, alias `d`)
 - File and directory statistics
 - File classification by extension
-- File size distribution
-- Parallel filesystem analysis
+- Parallel filesystem traversal using Virtual Threads
 - File moving
 - Operation history
 - SQLite-based operation log
@@ -23,10 +23,12 @@ files and directories on Windows and Linux.
 
 ## Directory Analysis
 
-Analyze the contents of a directory:
+Analyze the contents of a directory (alias: `d`):
 
 ```bash
 xsaw du ./Downloads
+# or using the short alias
+xsaw d ./Downloads
 ```
 
 Example:
@@ -91,6 +93,97 @@ List all existing extensions in a compact grid:
 
 ```bash
 xsaw du -l -n 0 ./Downloads
+```
+
+## File Search
+
+High-speed parallel file and directory search powered by Virtual Threads (alias: `f`):
+
+```bash
+xsaw fi <query> [path]
+# or using the short 1-letter alias
+xsaw f <query> [path]
+```
+
+Example:
+
+```bash
+xsaw f Result .
+```
+
+```text
+src\main\java\org\example\FileResult.java
+src\main\java\org\example\FindResult.java
+src\test\java\org\example\FileResultTest.java
+src\test\java\org\example\FindResultTest.java
+
+Found 4 matches in 27 ms.
+```
+
+### Options
+
+* `-s, --case-sensitive`: Perform a case-sensitive search (default: case-insensitive).
+* `-d, --dir-only`: Search for directories only.
+* `-f, --file-only`: Search for files only.
+* `-e, --ext <ext>`: Filter results by file extension (e.g., `java` or `.txt`).
+
+#### Filter by file extension (`-e`)
+
+```bash
+# Search for .java files containing "Result"
+xsaw f Result . -e java
+```
+
+#### Search directories only (`-d`)
+
+```bash
+# Find only directories matching "test"
+xsaw f test . -d
+```
+
+#### Search files only (`-f`)
+
+```bash
+# Find only files matching "main"
+xsaw f main . -f
+```
+
+#### Case-sensitive search (`-s`)
+
+```bash
+# Match exact casing
+xsaw f UpperCase . -s
+```
+
+### Pipeline Integration (`f | du`)
+
+Connect `fi` (or `f`) directly with `du` (or `d`) via standard pipelines to analyze the aggregate size and extension statistics of search results:
+
+```bash
+# Search for files matching "Result" and inspect their disk usage and extension breakdown
+xsaw f Result . | xsaw du
+```
+
+Example:
+
+```text
+Found 4 matches in 27 ms.
+Directory: (standard input)
+
+Files:                  4
+Directories:            0
+Total size:        6.6 KB
+
+Extension statistics:
+
+java       100.0%
+```
+
+Search options can be combined seamlessly:
+
+```bash
+# Analyze only .java files matching "Test"
+xsaw f Test . -e java | xsaw du
 ```
 
 ## File Operations
@@ -203,7 +296,6 @@ large directory trees and large numbers of files.
 * Advanced duplicate file detection
 * File hashing
 * More detailed directory statistics
-* Search
 * Operation filtering
 * Improved restore support
 * Additional filesystem operations

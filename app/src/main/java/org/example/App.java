@@ -15,7 +15,7 @@ import picocli.CommandLine.Parameters;
 
 @Command(name = "xsaw", mixinStandardHelpOptions = true, version = "1.0.0",
         description = "Lists files in the current directory.",
-        subcommands = {App.DuCommand.class})
+        subcommands = {App.DuCommand.class, App.FiCommand.class})
 
 public class App implements Callable<Integer> {
     @Override
@@ -26,8 +26,8 @@ public class App implements Callable<Integer> {
 
     @Command (name = "du", aliases = {"d"}, description = "Displays the number of files, directories, and total size of a specified directory, along with statistics on file extensions.")
     static class DuCommand implements Callable<Integer> {
-        @Parameters (index = "0", description = "The directory to list files from.", defaultValue = ".")
-        private Path targetDir;
+        @Parameters (index = "0", description = "The directory to list files from, or '-' for standard input.", defaultValue = "")
+        private String targetInput;
 
         @Option (names = {"-n", "--topN"}, description = "Number of top file extensions to display.(0 = all)", defaultValue = "4")
         private int topN;
@@ -37,16 +37,36 @@ public class App implements Callable<Integer> {
 
         @Override
         public Integer call() {
-            Path path = targetDir.toAbsolutePath().normalize();
-
-            if (!Files.isDirectory(path)) {
-                System.err.println("Error: " + path + " is not a directory.");
-                return 1;
-            }
+            boolean isPiped = targetInput.isEmpty() && System.console() == null;
+            boolean isExplicitStdin = "-".equals(targetInput);
 
             try {
                 du du = new du();
-                FileResult result = du.analyze(path);
+                FileResult result;
+
+                if (isPiped || isExplicitStdin) {
+                    var paths = new java.util.ArrayList<Path>();
+                    try (var reader = new java.io.BufferedReader(new java.io.InputStreamReader(System.in, java.nio.charset.StandardCharsets.UTF_8))) {
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            String trimmed = line.trim();
+                            if (!trimmed.isEmpty()) {
+                                Path p = Path.of(trimmed);
+                                if (Files.exists(p)) {
+                                    paths.add(p.toAbsolutePath().normalize());
+                                }
+                            }
+                        }
+                    }
+                    result = du.analyze(paths, Path.of("(standard input)"));
+                } else {
+                    Path path = Path.of(targetInput.isEmpty() ? "." : targetInput).toAbsolutePath().normalize();
+                    if (!Files.isDirectory(path)) {
+                        System.err.println("Error: " + path + " is not a directory.");
+                        return 1;
+                    }
+                    result = du.analyze(path);
+                }
 
                 System.out.printf("Directory: %s%n%n", result.rootDir());
                 System.out.printf("%-14s %,10d%n", "Files:", result.fileCount());
@@ -95,6 +115,59 @@ public class App implements Callable<Integer> {
                 return 0;
             } catch (IOException e) {
                 System.err.println("Error analyzing directory: " + e.getMessage());
+                return 1;
+            }
+        }
+    }
+
+    @Command (name = "fi", aliases = {"f"}, description = "Searches for files and directories matching a specified query within a given directory.")
+    static class FiCommand implements Callable<Integer> {
+        @Parameters (index = "0", description = "The search query (keyword).")
+        private String query;
+
+        @Parameters (index = "1", description = "The directory to search in.", defaultValue = ".")
+        private Path targetDir;
+
+        @Option (names = {"-s", "--case-sensitive"}, description = "Perform a case-sensitive search.", defaultValue = "false")
+        private boolean caseSensitive;
+
+        @Option (names = {"-d", "--dir-only"}, description = "Search for directories only.", defaultValue = "false")
+        private boolean dirOnly;
+
+        @Option (names = {"-f", "--file-only"}, description = "Search for files only.", defaultValue = "false")
+        private boolean fileOnly;
+
+        @Option (names = {"-e", "--ext"}, description = "Filter results by file extension (e.g., .txt).")
+        private String ext;
+
+        @Override 
+        public Integer call() {
+            Path root = targetDir.toAbsolutePath().normalize();
+
+            if (!Files.isDirectory(root)) {
+                System.err.println("Error: " + root + " is not a directory.");
+                return 1;
+            }
+
+            if (dirOnly && fileOnly) {
+                System.err.println("Error: Cannot specify both --dir-only and --file-only options.");
+                return 1;
+            }
+
+            try {
+                fi finder = new fi();
+                fi.FindOptions options = new fi.FindOptions(caseSensitive, dirOnly, fileOnly, ext);
+                FindResult result = finder.find(root, query, options);
+
+                for (Path relativeMatch : result.relativeMatches()) {
+                    System.out.println(relativeMatch);
+                }
+
+                System.err.println();
+                System.err.printf("Found %d matches in %d ms.%n", result.count(), result.elapsedMillis());
+                return 0;
+            } catch (IOException e) {
+                System.err.println("Error searching directory: " + e.getMessage());
                 return 1;
             }
         }

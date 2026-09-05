@@ -139,17 +139,150 @@ class AppTest {
         assertTrue(secondRow.contains(".fff"));
     }
 
-    // System.out の出力をキャプチャするヘルパーメソッド
+    @Test
+    void testFiWithValidDirectory() throws Exception {
+        Files.createFile(tempDir.resolve("target.txt"));
+        Files.createFile(tempDir.resolve("other.txt"));
+
+        String output = runWithOutputCapture("fi", "target", tempDir.toString());
+        assertTrue(output.contains("target.txt"));
+        assertFalse(output.contains("other.txt"));
+        assertTrue(output.contains("Found 1 matches"));
+    }
+
+    @Test
+    void testFAliasWithValidDirectory() throws Exception {
+        Files.createFile(tempDir.resolve("test_file.txt"));
+
+        String output = runWithOutputCapture("f", "test", tempDir.toString());
+        assertTrue(output.contains("test_file.txt"));
+        assertTrue(output.contains("Found 1 matches"));
+    }
+
+    @Test
+    void testFiCaseSensitive() throws Exception {
+        Files.createFile(tempDir.resolve("UpperCase.txt"));
+
+        // 小文字で検索した場合はマッチしない (0件)
+        String outputMismatch = runWithOutputCapture("fi", "-s", "upper", tempDir.toString());
+        assertFalse(outputMismatch.contains("UpperCase.txt"));
+        assertTrue(outputMismatch.contains("Found 0 matches"));
+
+        // 正確な大文字小文字で検索した場合はマッチする (1件)
+        String outputMatch = runWithOutputCapture("fi", "-s", "Upper", tempDir.toString());
+        assertTrue(outputMatch.contains("UpperCase.txt"));
+        assertTrue(outputMatch.contains("Found 1 matches"));
+    }
+
+    @Test
+    void testFiDirOnly() throws Exception {
+        Files.createFile(tempDir.resolve("match_file.txt"));
+        Files.createDirectory(tempDir.resolve("match_dir"));
+
+        String output = runWithOutputCapture("fi", "-d", "match", tempDir.toString());
+        assertTrue(output.contains("match_dir"));
+        assertFalse(output.contains("match_file.txt"));
+        assertTrue(output.contains("Found 1 matches"));
+    }
+
+    @Test
+    void testFiFileOnly() throws Exception {
+        Files.createFile(tempDir.resolve("match_file.txt"));
+        Files.createDirectory(tempDir.resolve("match_dir"));
+
+        String output = runWithOutputCapture("fi", "-f", "match", tempDir.toString());
+        assertTrue(output.contains("match_file.txt"));
+        assertFalse(output.contains("match_dir"));
+        assertTrue(output.contains("Found 1 matches"));
+    }
+
+    @Test
+    void testFiExtOption() throws Exception {
+        Files.createFile(tempDir.resolve("test.java"));
+        Files.createFile(tempDir.resolve("test.py"));
+
+        String output = runWithOutputCapture("fi", "-e", "java", "test", tempDir.toString());
+        assertTrue(output.contains("test.java"));
+        assertFalse(output.contains("test.py"));
+        assertTrue(output.contains("Found 1 matches"));
+    }
+
+    @Test
+    void testFiConflictingDirAndFileOptions() {
+        int exitCode = new CommandLine(new App()).execute("fi", "-d", "-f", "query", tempDir.toString());
+        assertEquals(1, exitCode, "--dir-only と --file-only の同時指定はエラーになるべき");
+    }
+
+    @Test
+    void testFiWithNonExistentDirectory() {
+        Path invalidPath = tempDir.resolve("non_existent_folder");
+        int exitCode = new CommandLine(new App()).execute("fi", "query", invalidPath.toString());
+        assertEquals(1, exitCode);
+    }
+
+    @Test
+    void testFiWithFileInsteadOfDirectory() throws Exception {
+        Path singleFile = Files.createFile(tempDir.resolve("file.txt"));
+        int exitCode = new CommandLine(new App()).execute("fi", "query", singleFile.toString());
+        assertEquals(1, exitCode, "ディレクトリではなくファイルを指定した場合はエラーになるべき");
+    }
+
+    @Test
+    void testDuFromStandardInputWithHyphen() throws Exception {
+        Path f1 = Files.writeString(tempDir.resolve("item1.txt"), "hello");
+        Path f2 = Files.writeString(tempDir.resolve("item2.java"), "class Test {}");
+
+        // 絶対パスで標準入力をエミュレート
+        String inputLines = f1.toAbsolutePath().toString() + System.lineSeparator() +
+                            f2.toAbsolutePath().toString() + System.lineSeparator();
+        java.io.InputStream origIn = System.in;
+        try {
+            System.setIn(new java.io.ByteArrayInputStream(inputLines.getBytes(StandardCharsets.UTF_8)));
+            String output = runWithOutputCapture("du", "-");
+            assertTrue(output.contains("Directory: (standard input)"));
+            assertTrue(output.contains("Files:                  2"));
+            assertTrue(output.contains("txt"));
+            assertTrue(output.contains("java"));
+        } finally {
+            System.setIn(origIn);
+        }
+    }
+
+    @Test
+    void testFiStdoutOnlyContainsPathsForPiping() throws Exception {
+        Files.createFile(tempDir.resolve("pipe_test.txt"));
+
+        // stdout のみをキャプチャ
+        ByteArrayOutputStream outCapture = new ByteArrayOutputStream();
+        PrintStream origOut = System.out;
+        try {
+            System.setOut(new PrintStream(outCapture, true, StandardCharsets.UTF_8));
+            int exitCode = new CommandLine(new App()).execute("fi", "pipe_test", tempDir.toString());
+            assertEquals(0, exitCode);
+        } finally {
+            System.setOut(origOut);
+        }
+
+        String stdout = outCapture.toString(StandardCharsets.UTF_8);
+        assertTrue(stdout.contains("pipe_test.txt"), "stdout にはマッチしたパスが含まれるべき");
+        assertFalse(stdout.contains("Found"), "stdout にはサマリ (Found... ms) が含まれないべき (stderr に分離)");
+    }
+
+    // System.out と System.err の出力をキャプチャするヘルパーメソッド
     private String runWithOutputCapture(String... args) {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         PrintStream originalOut = System.out;
+        PrintStream originalErr = System.err;
         try {
-            System.setOut(new PrintStream(baos, true, StandardCharsets.UTF_8));
+            PrintStream ps = new PrintStream(baos, true, StandardCharsets.UTF_8);
+            System.setOut(ps);
+            System.setErr(ps);
             int exitCode = new CommandLine(new App()).execute(args);
             assertEquals(0, exitCode, "コマンド実行は正常終了 (0) するべき");
             return baos.toString(StandardCharsets.UTF_8);
         } finally {
             System.setOut(originalOut);
+            System.setErr(originalErr);
         }
     }
 }

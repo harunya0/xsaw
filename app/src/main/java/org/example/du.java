@@ -106,4 +106,28 @@ public class du {
         }
         return "(none)";
     }
+
+    public FileResult analyze(java.util.List<Path> paths, Path baseDir) throws IOException {
+        LongAdder fileCount = new LongAdder();
+        LongAdder dirCount = new LongAdder();
+        LongAdder totalBytes = new LongAdder();
+        ConcurrentHashMap<String, ExtAccumulator> extMap = new ConcurrentHashMap<>();
+
+        for (Path path : paths) {
+            if (Files.isRegularFile(path)) {
+                recordFile(path, Files.size(path), fileCount, totalBytes, extMap);
+            } else if (Files.isDirectory(path)) {
+                dirCount.increment();
+            }
+        }
+
+        Map<String, FileResult.ExtensionStat> finalExtStats = new HashMap<>();
+        for (var entry : extMap.entrySet()) {
+            finalExtStats.put(entry.getKey(), new FileResult.ExtensionStat(
+                entry.getValue().count.sum(),
+                entry.getValue().bytes.sum()
+            ));
+        }
+        return new FileResult(baseDir, fileCount.sum(), dirCount.sum(), totalBytes.sum(), Collections.unmodifiableMap(finalExtStats));
+    }
 }

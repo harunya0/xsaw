@@ -92,4 +92,21 @@ class DuTest {
         assertTrue(result.extensions().containsKey("txt"));
         assertEquals(2, result.extensions().get("txt").count(), "TXT と txt は同じ拡張子として集計される");
     }
+
+    @Test
+    void testAnalyzePathList() throws IOException {
+        Path f1 = Files.writeString(tempDir.resolve("file1.txt"), "hello");
+        Path f2 = Files.writeString(tempDir.resolve("file2.java"), "class Test {}");
+        Path dir = Files.createDirectory(tempDir.resolve("subDir"));
+
+        du analyzer = new du();
+        FileResult result = analyzer.analyze(java.util.List.of(f1, f2, dir), Path.of("(custom)"));
+
+        assertEquals(Path.of("(custom)"), result.rootDir());
+        assertEquals(2, result.fileCount());
+        assertEquals(1, result.dirCount());
+        assertEquals(5 + "class Test {}".length(), result.totalBytes());
+        assertTrue(result.extensions().containsKey("txt"));
+        assertTrue(result.extensions().containsKey("java"));
+    }
 }
