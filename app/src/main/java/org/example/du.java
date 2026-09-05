@@ -13,7 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.LongAdder;
 
-public class ls {
+public class du {
     private static class ExtAccumulator {
         final LongAdder count = new LongAdder();
         final LongAdder bytes = new LongAdder();

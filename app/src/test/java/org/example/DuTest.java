@@ -1,23 +1,23 @@
 package org.example;
 
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
-class LsTest {
+class DuTest {
 
     @TempDir
     Path tempDir;
 
     @Test
     void testAnalyzeEmptyDirectory() throws IOException {
-        ls analyzer = new ls();
+        du analyzer = new du();
         FileResult result = analyzer.analyze(tempDir);
 
         assertEquals(tempDir, result.rootDir());
@@ -52,7 +52,7 @@ class LsTest {
         Files.write(deep.resolve("noextension"), "b".repeat(60).getBytes(StandardCharsets.UTF_8));
 
         // 解析を実行
-        ls analyzer = new ls();
+        du analyzer = new du();
         FileResult result = analyzer.analyze(tempDir);
 
         // 検証
@@ -85,7 +85,7 @@ class LsTest {
         Files.writeString(tempDir.resolve("upper.TXT"), "test");
         Files.writeString(tempDir.resolve("lower.txt"), "test");
 
-        ls analyzer = new ls();
+        du analyzer = new du();
         FileResult result = analyzer.analyze(tempDir);
 
         assertEquals(2, result.fileCount());

@@ -15,7 +15,7 @@ import picocli.CommandLine.Parameters;
 
 @Command(name = "xsaw", mixinStandardHelpOptions = true, version = "1.0.0",
         description = "Lists files in the current directory.",
-        subcommands = {App.LsCommand.class})
+        subcommands = {App.DuCommand.class})
 
 public class App implements Callable<Integer> {
     @Override
@@ -24,8 +24,8 @@ public class App implements Callable<Integer> {
         return 0;
     }
 
-    @Command (name = "ls", description = "Lists files in the current directory.")
-    static class LsCommand implements Callable<Integer> {
+    @Command (name = "du", aliases = {"d"}, description = "Displays the number of files, directories, and total size of a specified directory, along with statistics on file extensions.")
+    static class DuCommand implements Callable<Integer> {
         @Parameters (index = "0", description = "The directory to list files from.", defaultValue = ".")
         private Path targetDir;
 
@@ -45,8 +45,8 @@ public class App implements Callable<Integer> {
             }
 
             try {
-                ls ls = new ls();
-                FileResult result = ls.analyze(path);
+                du du = new du();
+                FileResult result = du.analyze(path);
 
                 System.out.printf("Directory: %s%n%n", result.rootDir());
                 System.out.printf("%-14s %,10d%n", "Files:", result.fileCount());

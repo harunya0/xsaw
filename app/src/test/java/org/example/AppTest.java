@@ -24,47 +24,56 @@ class AppTest {
     }
 
     @Test
-    void testLsWithValidDirectory() throws Exception {
+    void testDuWithValidDirectory() throws Exception {
         Files.createFile(tempDir.resolve("test.txt"));
 
-        int exitCode = new CommandLine(new App()).execute("ls", tempDir.toString());
+        int exitCode = new CommandLine(new App()).execute("du", tempDir.toString());
         assertEquals(0, exitCode);
     }
 
     @Test
-    void testLsWithNonExistentDirectory() {
+    void testAliasDWithValidDirectory() throws Exception {
+        Files.createFile(tempDir.resolve("test.txt"));
+
+        // 1文字エイリアス "d" でも動くことをテスト
+        int exitCode = new CommandLine(new App()).execute("d", tempDir.toString());
+        assertEquals(0, exitCode, "1文字エイリアス 'd' でも正常終了するべき");
+    }
+
+    @Test
+    void testDuWithNonExistentDirectory() {
         Path invalidPath = tempDir.resolve("not_found_dir");
-        int exitCode = new CommandLine(new App()).execute("ls", invalidPath.toString());
+        int exitCode = new CommandLine(new App()).execute("du", invalidPath.toString());
         assertEquals(1, exitCode);
     }
 
     @Test
-    void testLsWithFileInsteadOfDirectory() throws Exception {
+    void testDuWithFileInsteadOfDirectory() throws Exception {
         Path filePath = Files.createFile(tempDir.resolve("single_file.txt"));
-        int exitCode = new CommandLine(new App()).execute("ls", filePath.toString());
+        int exitCode = new CommandLine(new App()).execute("du", filePath.toString());
         assertEquals(1, exitCode, "ディレクトリではなくファイルを指定した場合はエラーになるべき");
     }
 
     @Test
-    void testLsWithTopNOption() throws Exception {
+    void testDuWithTopNOption() throws Exception {
         Files.createFile(tempDir.resolve("a.zip"));
         Files.createFile(tempDir.resolve("b.mp4"));
         Files.createFile(tempDir.resolve("c.jpg"));
         Files.createFile(tempDir.resolve("d.pdf"));
         Files.createFile(tempDir.resolve("e.txt"));
 
-        String output = runWithOutputCapture("ls", "-n", "2", tempDir.toString());
+        String output = runWithOutputCapture("du", "-n", "2", tempDir.toString());
 
         assertTrue(output.contains("Extension statistics:"));
         assertTrue(output.contains("Other"), "-n 2 の場合、残り 3 件が Other に合算されるべき");
     }
 
     @Test
-    void testLsWithTopNZeroShowsAllWithoutOther() throws Exception {
+    void testDuWithTopNZeroShowsAllWithoutOther() throws Exception {
         Files.createFile(tempDir.resolve("a.zip"));
         Files.createFile(tempDir.resolve("b.mp4"));
 
-        String output = runWithOutputCapture("ls", "-n", "0", tempDir.toString());
+        String output = runWithOutputCapture("du", "-n", "0", tempDir.toString());
 
         assertTrue(output.contains("zip"));
         assertTrue(output.contains("mp4"));
@@ -72,11 +81,11 @@ class AppTest {
     }
 
     @Test
-    void testLsWithListOnlyOption() throws Exception {
+    void testDuWithListOnlyOption() throws Exception {
         Files.createFile(tempDir.resolve("a.zip"));
         Files.createFile(tempDir.resolve("b.mp4"));
 
-        String output = runWithOutputCapture("ls", "-l", tempDir.toString());
+        String output = runWithOutputCapture("du", "-l", tempDir.toString());
 
         assertTrue(output.contains("extensions:"), "-l の場合は extensions: ヘッダが出るべき");
         assertTrue(output.contains("zip"));
@@ -85,12 +94,12 @@ class AppTest {
     }
 
     @Test
-    void testLsWithCombinedOptions() throws Exception {
+    void testDuWithCombinedOptions() throws Exception {
         Files.createFile(tempDir.resolve("a.zip"));
         Files.createFile(tempDir.resolve("b.mp4"));
         Files.createFile(tempDir.resolve("c.txt"));
 
-        String output = runWithOutputCapture("ls", "-l", "-n", "0", tempDir.toString());
+        String output = runWithOutputCapture("du", "-l", "-n", "0", tempDir.toString());
 
         assertTrue(output.contains("extensions:"));
         assertTrue(output.contains("zip"));
@@ -100,7 +109,7 @@ class AppTest {
     }
 
     @Test
-    void testLsWithListOnlyGridFormat() throws Exception {
+    void testDuWithListOnlyGridFormat() throws Exception {
         // 件数に差をつけて 6 種類の拡張子を作成 (4列なので 1行目に件数上位4つ、2行目に残り2つが並ぶ)
         // .aaa: 6個, .bbb: 5個, .ccc: 4個, .ddd: 3個, .eee: 2個, .fff: 1個
         for (int i = 0; i < 6; i++) Files.createFile(tempDir.resolve("f" + i + ".aaa"));
@@ -110,7 +119,7 @@ class AppTest {
         for (int i = 0; i < 2; i++) Files.createFile(tempDir.resolve("f" + i + ".eee"));
         for (int i = 0; i < 1; i++) Files.createFile(tempDir.resolve("f" + i + ".fff"));
 
-        String output = runWithOutputCapture("ls", "-l", "-n", "0", tempDir.toString());
+        String output = runWithOutputCapture("du", "-l", "-n", "0", tempDir.toString());
 
         // 出力を行ごとに分割
         var lines = output.lines().map(s -> s.trim()).filter(s -> !s.isEmpty()).toList();
@@ -129,7 +138,6 @@ class AppTest {
         assertTrue(secondRow.contains(".eee"));
         assertTrue(secondRow.contains(".fff"));
     }
-
 
     // System.out の出力をキャプチャするヘルパーメソッド
     private String runWithOutputCapture(String... args) {

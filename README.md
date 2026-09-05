@@ -26,7 +26,7 @@ files and directories on Windows and Linux.
 Analyze the contents of a directory:
 
 ```bash
-xsaw ls ./Downloads
+xsaw du ./Downloads
 ```
 
 Example:
@@ -59,16 +59,16 @@ required for filesystem analysis.
 
 ```bash
 # Display top 10 extensions
-xsaw ls -n 10 ./Downloads
+xsaw du -n 10 ./Downloads
 
 # Display all extensions (without grouping into 'Other')
-xsaw ls -n 0 ./Downloads
+xsaw du -n 0 ./Downloads
 ```
 
 #### List extension names only in a grid (`-l`)
 
 ```bash
-xsaw ls -l ./Downloads
+xsaw du -l ./Downloads
 ```
 
 Example:
@@ -90,7 +90,7 @@ extensions:
 List all existing extensions in a compact grid:
 
 ```bash
-xsaw ls -l -n 0 ./Downloads
+xsaw du -l -n 0 ./Downloads
 ```
 
 ## File Operations
