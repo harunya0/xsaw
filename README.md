@@ -1,3 +1,4 @@
+# this project is under development.
 # xsaw
 
 A cross-platform CLI file manager and directory analyzer written in Java.
