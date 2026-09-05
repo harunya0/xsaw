@@ -1,0 +1,13 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Current Java App",
+            "request": "launch",
+            "mainClass": "org.example.App",
+            "projectName": "app",
+            "vmArgs": "--enable-preview --enable-native-access=ALL-UNNAMED"
+        }
+    ]
+}
