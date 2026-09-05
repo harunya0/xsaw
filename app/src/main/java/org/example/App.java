@@ -3,6 +3,7 @@
  */
 package org.example;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.Callable;
@@ -36,9 +37,42 @@ public class App implements Callable<Integer> {
                 return 1;
             }
 
-            System.out.println("Listing files in directory: " + path);
-            // todo: Implement file listing logic here, e.g., using Files.list(path) and printing the file names.
-            return 0;
+            try {
+                ls ls = new ls();
+                FileResult result = ls.analyze(path);
+                System.out.printf("Directory: %s%n%n", result.rootDir());
+                System.out.printf("%-14s %,10d%n", "Files:", result.fileCount());
+                System.out.printf("%-14s %,10d%n", "Directories:", result.dirCount());
+                System.out.printf("%-14s %10s%n%n", "Total size:", result.formattedTotalSize());
+                System.out.println("Extension statistics:");
+                System.out.println();
+
+                long totalFiles = result.fileCount();
+                if (totalFiles > 0) {
+                    var sortedList = result.extensions().entrySet().stream()
+                        .sorted((a, b) -> Long.compare(b.getValue().count(), a.getValue().count()))
+                        .toList();
+                    
+                    int topCount = Math.min(4, sortedList.size());
+                    long topFilesSum = 0;
+                    for (int i = 0; i < topCount; i++) {
+                        var entry = sortedList.get(i);
+                        double percentage = (double) entry.getValue().count() / totalFiles * 100;
+                        System.out.printf("%-10s %5.1f%%%n", entry.getKey(), percentage);
+                        topFilesSum += entry.getValue().count();
+                    }
+
+                    long otherFilesCount = totalFiles - topFilesSum;
+                    if (otherFilesCount > 0) {
+                        double otherPercentage = (double) otherFilesCount / totalFiles * 100;
+                        System.out.printf("%-10s %5.1f%%%n", "Other", otherPercentage);
+                    }
+                }
+                return 0;
+            } catch (IOException e) {
+                System.err.println("Error analyzing directory: " + e.getMessage());
+                return 1;
+            }
         }
     }
 

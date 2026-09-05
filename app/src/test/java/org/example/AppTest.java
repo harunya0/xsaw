@@ -36,4 +36,11 @@ class AppTest {
         int exitCode = new CommandLine(new App()).execute("ls", invalidPath.toString());
         assertEquals(1, exitCode);
     }
+
+    @Test
+    void testLsWithFileInsteadOfDirectory() throws Exception {
+        Path filePath = Files.createFile(tempDir.resolve("single_file.txt"));
+        int exitCode = new CommandLine(new App()).execute("ls", filePath.toString());
+        assertEquals(1, exitCode, "ディレクトリではなくファイルを指定した場合はエラーになるべき");
+    }
 }
