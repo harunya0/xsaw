@@ -83,7 +83,7 @@ public class ls {
 
     private void recordFile(
         Path file,
-        Long size,
+        long size,
         LongAdder fileCount,
         LongAdder totalBytes,
         ConcurrentHashMap<String, ExtAccumulator> extMap

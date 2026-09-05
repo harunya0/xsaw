@@ -10,6 +10,7 @@ import java.util.concurrent.Callable;
 
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
+import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 
 @Command(name = "xsaw", mixinStandardHelpOptions = true, version = "1.0.0",
@@ -28,6 +29,12 @@ public class App implements Callable<Integer> {
         @Parameters (index = "0", description = "The directory to list files from.", defaultValue = ".")
         private Path targetDir;
 
+        @Option (names = {"-n", "--topN"}, description = "Number of top file extensions to display.(0 = all)", defaultValue = "4")
+        private int topN;
+
+        @Option (names = {"-l", "--list-only"}, description = "List only the file extensions without statistics.", defaultValue = "false")
+        private boolean listOnly;
+
         @Override
         public Integer call() {
             Path path = targetDir.toAbsolutePath().normalize();
@@ -40,32 +47,49 @@ public class App implements Callable<Integer> {
             try {
                 ls ls = new ls();
                 FileResult result = ls.analyze(path);
+
                 System.out.printf("Directory: %s%n%n", result.rootDir());
                 System.out.printf("%-14s %,10d%n", "Files:", result.fileCount());
                 System.out.printf("%-14s %,10d%n", "Directories:", result.dirCount());
                 System.out.printf("%-14s %10s%n%n", "Total size:", result.formattedTotalSize());
-                System.out.println("Extension statistics:");
-                System.out.println();
-
+                
+                
                 long totalFiles = result.fileCount();
+                System.out.println();
                 if (totalFiles > 0) {
                     var sortedList = result.extensions().entrySet().stream()
+                        .filter(e -> !e.getKey().equals("other") && !e.getKey().equals("(none)") && !e.getKey().isEmpty())
                         .sorted((a, b) -> Long.compare(b.getValue().count(), a.getValue().count()))
                         .toList();
                     
-                    int topCount = Math.min(4, sortedList.size());
+                    int topCount = topN == 0 ? sortedList.size() : Math.min(topN, sortedList.size());
                     long topFilesSum = 0;
-                    for (int i = 0; i < topCount; i++) {
-                        var entry = sortedList.get(i);
-                        double percentage = (double) entry.getValue().count() / totalFiles * 100;
-                        System.out.printf("%-10s %5.1f%%%n", entry.getKey(), percentage);
-                        topFilesSum += entry.getValue().count();
-                    }
+                    if (listOnly) {
+                        System.out.println("extensions:");
+                        int columns = 4;
 
-                    long otherFilesCount = totalFiles - topFilesSum;
-                    if (otherFilesCount > 0) {
-                        double otherPercentage = (double) otherFilesCount / totalFiles * 100;
-                        System.out.printf("%-10s %5.1f%%%n", "Other", otherPercentage);
+                        for (int i = 0; i < topCount; i++) {
+                            String ext = "." + sortedList.get(i).getKey();
+                            System.out.printf("%-12s", ext);
+                            if ((i + 1) % columns == 0 || i == topCount - 1) {
+                                System.out.println();
+                            }
+                        }
+                    } else {
+                        System.out.println("Extension statistics:");
+                        System.out.println();
+                        for (int i = 0; i < topCount; i++) {
+                            var entry = sortedList.get(i);
+                            double percentage = (double) entry.getValue().count() / totalFiles * 100;
+                            System.out.printf("%-10s %5.1f%%%n", entry.getKey(), percentage);
+                            topFilesSum += entry.getValue().count();
+                        }
+
+                        long remainingFilesCount = totalFiles - topFilesSum;
+                        if (topN > 0 && remainingFilesCount > 0) {
+                            double otherPercentage = (double) remainingFilesCount / totalFiles * 100;
+                            System.out.printf("%-10s %5.1f%%%n", "Other", otherPercentage);
+                        }
                     }
                 }
                 return 0;

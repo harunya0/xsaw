@@ -27,7 +27,7 @@ Analyze the contents of a directory:
 
 ```bash
 xsaw ls ./Downloads
-````
+```
 
 Example:
 
@@ -38,17 +38,60 @@ Files:        12,481
 Directories:   1,203
 Total size:   84.2 GB
 
-Extensions:
+Extension statistics:
 
-  .zip        31.2%
-  .mp4        24.8%
-  .jpg        18.4%
-  .pdf         7.1%
-  other       18.5%
+.zip        31.2%
+.mp4        24.8%
+.jpg        18.4%
+.pdf         7.1%
+Other       18.5%
 ```
 
 xsaw can analyze large directory trees in parallel to reduce the time
 required for filesystem analysis.
+
+### Options
+
+* `-n, --topN <number>`: Number of top file extensions to display (default: `4`, set `0` to display all).
+* `-l, --list-only`: List file extensions in a 4-column compact grid without percentage statistics.
+
+#### Display custom number of extensions (`-n`)
+
+```bash
+# Display top 10 extensions
+xsaw ls -n 10 ./Downloads
+
+# Display all extensions (without grouping into 'Other')
+xsaw ls -n 0 ./Downloads
+```
+
+#### List extension names only in a grid (`-l`)
+
+```bash
+xsaw ls -l ./Downloads
+```
+
+Example:
+
+```text
+Directory: ./Downloads
+
+Files:        12,481
+Directories:   1,203
+Total size:   84.2 GB
+
+extensions:
+.zip        .mp4        .jpg        .pdf        
+.png        .exe        .txt        .java       
+```
+
+#### Combine options (`-l -n 0`)
+
+List all existing extensions in a compact grid:
+
+```bash
+xsaw ls -l -n 0 ./Downloads
+```
 
 ## File Operations
 

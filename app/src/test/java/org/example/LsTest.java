@@ -74,9 +74,9 @@ class LsTest {
         assertEquals(1, exts.get("png").count());
         assertEquals(40, exts.get("png").totalBytes());
 
-        assertTrue(exts.containsKey("other"));
-        assertEquals(1, exts.get("other").count());
-        assertEquals(60, exts.get("other").totalBytes());
+        assertTrue(exts.containsKey("(none)"));
+        assertEquals(1, exts.get("(none)").count());
+        assertEquals(60, exts.get("(none)").totalBytes());
     }
 
     @Test
