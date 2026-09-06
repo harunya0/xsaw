@@ -28,6 +28,7 @@ public class du {
         LongAdder dirCount = new LongAdder();
         LongAdder totalBytes = new LongAdder();
         ConcurrentHashMap<String, ExtAccumulator> extMap = new ConcurrentHashMap<>();
+        long startTime = System.currentTimeMillis();
 
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             try (var stream = Files.newDirectoryStream(root)) {
@@ -41,6 +42,8 @@ public class du {
                 }
             }
         }
+        long elapsed = System.currentTimeMillis() - startTime;
+
         Map<String, FileResult.ExtensionStat> finalExtStats = new HashMap<>();
         for (var entry : extMap.entrySet()) {
             finalExtStats.put(entry.getKey(), new FileResult.ExtensionStat(
@@ -48,7 +51,7 @@ public class du {
                 entry.getValue().bytes.sum()
             ));
         } 
-        return new FileResult(root, fileCount.sum(), dirCount.sum(), totalBytes.sum(), Collections.unmodifiableMap(finalExtStats));
+        return new FileResult(root, fileCount.sum(), dirCount.sum(), totalBytes.sum(), Collections.unmodifiableMap(finalExtStats), elapsed);
     }
 
     private void scanSubTree(
@@ -121,6 +124,7 @@ public class du {
     }
 
     public FileResult analyze(java.util.List<Path> paths, Path baseDir, java.util.Set<String> fileExt) throws IOException {
+        long startTime = System.currentTimeMillis();
         LongAdder fileCount = new LongAdder();
         LongAdder dirCount = new LongAdder();
         LongAdder totalBytes = new LongAdder();
@@ -133,6 +137,7 @@ public class du {
                 dirCount.increment();
             }
         }
+        long elapsed = System.currentTimeMillis() - startTime;
 
         Map<String, FileResult.ExtensionStat> finalExtStats = new HashMap<>();
         for (var entry : extMap.entrySet()) {
@@ -141,6 +146,6 @@ public class du {
                 entry.getValue().bytes.sum()
             ));
         }
-        return new FileResult(baseDir, fileCount.sum(), dirCount.sum(), totalBytes.sum(), Collections.unmodifiableMap(finalExtStats));
+        return new FileResult(baseDir, fileCount.sum(), dirCount.sum(), totalBytes.sum(), Collections.unmodifiableMap(finalExtStats), elapsed);
     }
 }

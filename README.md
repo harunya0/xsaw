@@ -39,6 +39,7 @@ Directory: ./Downloads
 Files:        12,481
 Directories:   1,203
 Total size:   84.2 GB
+Elapsed:       1.42 s
 
 Extension statistics:
 
@@ -82,6 +83,7 @@ Directory: ./Downloads
 Files:        12,481
 Directories:   1,203
 Total size:   84.2 GB
+Elapsed:       1.42 s
 
 extensions:
 .zip        .mp4        .jpg        .pdf        
@@ -190,6 +192,7 @@ Directory: (standard input)
 Files:                  4
 Directories:            0
 Total size:        6.6 KB
+Elapsed:            12 ms
 
 Extension statistics:
 

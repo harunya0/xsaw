@@ -26,6 +26,7 @@ class DuTest {
         assertEquals(0, result.dirCount(), "空ディレクトリのサブディレクトリ数は 0");
         assertEquals(0, result.totalBytes(), "空ディレクトリの合計サイズは 0");
         assertTrue(result.extensions().isEmpty(), "空ディレクトリの拡張子マップは空");
+        assertTrue(result.elapsedMillis() >= 0, "経過時間は0以上");
     }
 
     @Test

@@ -346,6 +346,55 @@ class AppTest {
         assertEquals(1, exitCode, "不正な正規表現は終了コード 1 で終了するべき");
     }
 
+    @Test
+    void testDuQuestionMarkShowsHelp() {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        PrintStream origOut = System.out;
+        try {
+            System.setOut(new PrintStream(baos, true, StandardCharsets.UTF_8));
+            int exitCode = new CommandLine(new App()).execute("du", "?");
+            assertEquals(0, exitCode, "du ? はヘルプを表示して正常終了 (0) するべき");
+            assertTrue(baos.toString(StandardCharsets.UTF_8).contains("Usage:"));
+        } finally {
+            System.setOut(origOut);
+        }
+    }
+
+    @Test
+    void testDuInvalidPathReturnsError() {
+        ByteArrayOutputStream errBaos = new ByteArrayOutputStream();
+        PrintStream origErr = System.err;
+        try {
+            System.setErr(new PrintStream(errBaos, true, StandardCharsets.UTF_8));
+            int exitCode = new CommandLine(new App()).execute("du", "invalid*path");
+            assertEquals(1, exitCode, "不正なパス文字は終了コード 1 で終了するべき");
+            assertTrue(errBaos.toString(StandardCharsets.UTF_8).contains("Error: Invalid path"));
+        } finally {
+            System.setErr(origErr);
+        }
+    }
+
+    @Test
+    void testFiQuestionMarkShowsHelp() {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        PrintStream origOut = System.out;
+        try {
+            System.setOut(new PrintStream(baos, true, StandardCharsets.UTF_8));
+            int exitCode = new CommandLine(new App()).execute("fi", "?");
+            assertEquals(0, exitCode, "fi ? はヘルプを表示して正常終了 (0) するべき");
+            assertTrue(baos.toString(StandardCharsets.UTF_8).contains("Usage:"));
+        } finally {
+            System.setOut(origOut);
+        }
+    }
+
+    @Test
+    void testDuOutputsElapsed() throws Exception {
+        Files.createFile(tempDir.resolve("elapsed_test.txt"));
+        String output = runWithOutputCapture("du", tempDir.toString());
+        assertTrue(output.contains("Elapsed:"), "du の出力に Elapsed: が含まれるべき");
+    }
+
     // System.out と System.err の出力をキャプチャするヘルパーメソッド
     private String runWithOutputCapture(String... args) {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();

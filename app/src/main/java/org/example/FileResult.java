@@ -10,25 +10,29 @@ public final class FileResult {
     private final long dirCount;
     private final long totalBytes;
     private final Map<String, ExtensionStat> extensions;
+    private final long elapsedMillis;
 
     public FileResult(
         Path rootDir,
         long fileCount,
         long dirCount,
         long totalBytes,
-        Map<String, ExtensionStat> extensions
+        Map<String, ExtensionStat> extensions,
+        long elapsedMillis
     ) {
         this.rootDir = rootDir;
         this.fileCount = fileCount;
         this.dirCount = dirCount;
         this.totalBytes = totalBytes;
         this.extensions = extensions;
+        this.elapsedMillis = elapsedMillis;
     }
 
     public Path rootDir() { return rootDir; }
     public long fileCount() { return fileCount; }
     public long dirCount() { return dirCount; }
     public long totalBytes() { return totalBytes; }
+    public long elapsedMillis() { return elapsedMillis; }
     public Map<String, ExtensionStat> extensions() { return extensions; }
 
     public String formattedTotalSize() {
@@ -38,6 +42,18 @@ public final class FileResult {
         return String.format("%.1f %cB", totalBytes / Math.pow(1024, exp), unit);
     }
 
+    public String formattedElapsed() {
+        if (elapsedMillis < 1000) {
+            return elapsedMillis + " ms";
+        } else if (elapsedMillis < 60_000) {
+            return String.format("%.2f s", elapsedMillis / 1000.0);
+        } else {
+            long minutes = elapsedMillis / 60_000;
+            long seconds = (elapsedMillis % 60_000) / 1000;
+            return String.format("%dm %02ds", minutes, seconds);
+        }
+    }
+    
     public static final class ExtensionStat {
         private final long count;
         private final long totalBytes;

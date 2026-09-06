@@ -42,7 +42,7 @@ public class App implements Callable<Integer> {
         }
     }
 
-    @Command (name = "du", aliases = {"d"}, description = "Displays the number of files, directories, and total size of a specified directory, along with statistics on file extensions.")
+    @Command (name = "du", aliases = {"d"}, mixinStandardHelpOptions = true, description = "Displays the number of files, directories, and total size of a specified directory, along with statistics on file extensions.")
     static class DuCommand implements Callable<Integer> {
         @Parameters (index = "0", description = "The directory to list files from, or '-' for standard input.", defaultValue = "")
         private String targetInput;
@@ -58,6 +58,11 @@ public class App implements Callable<Integer> {
 
         @Override
         public Integer call() {
+            if ("?".equals(targetInput) || "/?".equals(targetInput) || "help".equalsIgnoreCase(targetInput)) {
+                CommandLine.usage(this, System.out);
+                return 0;
+            }
+
             boolean isExplicitStdin = "-".equals(targetInput);
             boolean isPiped = (targetInput.isEmpty() || ".".equals(targetInput)) && System.console() == null && hasPipedInput();
 
@@ -73,16 +78,24 @@ public class App implements Callable<Integer> {
                         while ((line = reader.readLine()) != null) {
                             String trimmed = line.trim();
                             if (!trimmed.isEmpty()) {
-                                Path p = Path.of(trimmed);
-                                if (Files.exists(p)) {
-                                    paths.add(p.toAbsolutePath().normalize());
-                                }
+                                try {
+                                    Path p = Path.of(trimmed);
+                                    if (Files.exists(p)) {
+                                        paths.add(p.toAbsolutePath().normalize());
+                                    }
+                                } catch (java.nio.file.InvalidPathException ignored) {}
                             }
                         }
                     }
                     result = du.analyze(paths, Path.of("(standard input)"), filterExts);
                 } else {
-                    Path path = Path.of(targetInput.isEmpty() ? "." : targetInput).toAbsolutePath().normalize();
+                    Path path;
+                    try {
+                        path = Path.of(targetInput.isEmpty() ? "." : targetInput).toAbsolutePath().normalize();
+                    } catch (java.nio.file.InvalidPathException e) {
+                        System.err.println("Error: Invalid path '" + targetInput + "': " + e.getReason());
+                        return 1;
+                    }
                     if (!Files.isDirectory(path)) {
                         System.err.println("Error: " + path + " is not a directory.");
                         return 1;
@@ -94,6 +107,7 @@ public class App implements Callable<Integer> {
                 System.out.printf("%-14s %,10d%n", "Files:", result.fileCount());
                 System.out.printf("%-14s %,10d%n", "Directories:", result.dirCount());
                 System.out.printf("%-14s %10s%n%n", "Total size:", result.formattedTotalSize());
+                System.out.printf("%-14s %10s%n%n", "Elapsed:", result.formattedElapsed());
                 
                 
                 long totalFiles = result.fileCount();
@@ -142,7 +156,7 @@ public class App implements Callable<Integer> {
         }
     }
 
-    @Command (name = "fi", aliases = {"f"}, description = "Searches for files and directories matching a specified query within a given directory.")
+    @Command (name = "fi", aliases = {"f"}, mixinStandardHelpOptions = true, description = "Searches for files and directories matching a specified query within a given directory.")
     static class FiCommand implements Callable<Integer> {
         @Parameters (index = "0", description = "The search query (keyword).")
         private String query;
@@ -167,6 +181,11 @@ public class App implements Callable<Integer> {
 
         @Override 
         public Integer call() {
+            if ("?".equals(query) || "/?".equals(query) || "help".equalsIgnoreCase(query)) {
+                CommandLine.usage(this, System.out);
+                return 0;
+            }
+
             Path root = targetDir.toAbsolutePath().normalize();
 
             if (!Files.isDirectory(root)) {
@@ -201,7 +220,7 @@ public class App implements Callable<Integer> {
         }
     }
 
-    @Command (name = "mv", aliases = {"m"}, description = "Moves a file or directory to a new location.")
+    @Command (name = "mv", aliases = {"m"}, mixinStandardHelpOptions = true, description = "Moves a file or directory to a new location.")
     static class MvCommand implements Callable<Integer> {
         @Parameters (index = "0", description = "The source file or directory to move.")
         private Path source;
