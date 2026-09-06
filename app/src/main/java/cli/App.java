@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import du.*;
 import fi.*;
 import mv.*;
+import gr.*;
 
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
@@ -21,7 +22,7 @@ import picocli.CommandLine.Parameters;
 
 @Command(name = "xsaw", mixinStandardHelpOptions = true, version = "1.0.0",
         description = "Lists files in the current directory.",
-        subcommands = {App.DuCommand.class, App.FiCommand.class, App.MvCommand.class})
+        subcommands = {App.DuCommand.class, App.FiCommand.class, App.MvCommand.class, App.GrepCommand.class})
 
 public class App implements Callable<Integer> {
     @Override
@@ -40,6 +41,15 @@ public class App implements Callable<Integer> {
             .collect(java.util.stream.Collectors.toSet());
     }
 
+    private static java.util.Set<String> normalizeDirs(java.util.List<String> dirs) {
+        if (dirs == null || dirs.isEmpty()) return java.util.Set.of();
+        return dirs.stream()
+            .filter(java.util.Objects::nonNull)
+            .map(String::trim)
+            .filter(s -> !s.isEmpty())
+            .collect(java.util.stream.Collectors.toSet());
+    }
+
     private static boolean hasPipedInput() {
         try {
             return System.in.available() > 0;
@@ -48,7 +58,7 @@ public class App implements Callable<Integer> {
         }
     }
 
-    @Command (name = "du", aliases = {"d"}, mixinStandardHelpOptions = true, description = "Displays the number of files, directories, and total size of a specified directory, along with statistics on file extensions.")
+    @Command (name = "du", aliases = {"d"}, description = "Displays the number of files, directories, and total size of a specified directory, along with statistics on file extensions.")
     static class DuCommand implements Callable<Integer> {
         @Parameters (index = "0", description = "The directory to list files from, or '-' for standard input.", defaultValue = "")
         private String targetInput;
@@ -61,6 +71,15 @@ public class App implements Callable<Integer> {
 
         @Option (names = {"-e", "--ext"}, split = ",", description = "Filter by file extensions (comma-separated or multiple flags).")
         private java.util.List<String> exts;
+
+        @Option (names = {"-x", "--exclude"}, split = ",", description = "Exclude directories by name (comma-separated or multiple flags).")
+        private java.util.List<String> excludeDirs;
+
+        @Option (names = {"-h", "-H", "--hidden"}, description = "Include hidden files and directories (default: excluded).", defaultValue = "false")
+        private boolean hidden;
+
+        @Option (names = {"--help"}, usageHelp = true, description = "Display this help message.")
+        private boolean helpRequested;
 
         @Override
         public Integer call() {
@@ -76,6 +95,7 @@ public class App implements Callable<Integer> {
                 du du = new du();
                 FileResult result;
                 var filterExts = normalizeExts(exts);
+                var filterExcludeDirs = normalizeDirs(excludeDirs);
 
                 if (isPiped || isExplicitStdin) {
                     var paths = new java.util.ArrayList<Path>();
@@ -106,7 +126,7 @@ public class App implements Callable<Integer> {
                         System.err.println("Error: " + path + " is not a directory.");
                         return 1;
                     }
-                    result = du.analyze(path, filterExts);
+                    result = du.analyze(path, filterExts, filterExcludeDirs, hidden);
                 }
 
                 System.out.printf("Directory: %s%n%n", result.rootDir());
@@ -162,7 +182,7 @@ public class App implements Callable<Integer> {
         }
     }
 
-    @Command (name = "fi", aliases = {"f"}, mixinStandardHelpOptions = true, description = "Searches for files and directories matching a specified query within a given directory.")
+    @Command (name = "fi", aliases = {"f"}, description = "Searches for files and directories matching a specified query within a given directory.")
     static class FiCommand implements Callable<Integer> {
         @Parameters (index = "0", description = "The search query (keyword).", defaultValue = "", arity = "0..1")
         private String query = "";
@@ -184,6 +204,15 @@ public class App implements Callable<Integer> {
 
         @Option (names = {"-r", "--regex"}, description = "Treat the query as a regular expression.", defaultValue = "false")
         private boolean regex;
+
+        @Option (names = {"-x", "--exclude"}, split = ",", description = "Exclude directories by name (comma-separated or multiple flags).")
+        private java.util.List<String> excludeDirs;
+
+        @Option (names = {"-h", "-H", "--hidden"}, description = "Include hidden files and directories (default: excluded).", defaultValue = "false")
+        private boolean hidden;
+
+        @Option (names = {"--help"}, usageHelp = true, description = "Display this help message.")
+        private boolean helpRequested;
 
         @Override 
         public Integer call() {
@@ -216,7 +245,7 @@ public class App implements Callable<Integer> {
 
             try {
                 fi finder = new fi();
-                fi.FindOptions options = new fi.FindOptions(caseSensitive, dirOnly, fileOnly, regex, normalizeExts(exts));
+                fi.FindOptions options = new fi.FindOptions(caseSensitive, dirOnly, fileOnly, regex, normalizeExts(exts), normalizeDirs(excludeDirs), hidden);
                 FindResult result = finder.find(root, query, options);
 
                 for (Path relativeMatch : result.relativeMatches()) {
@@ -326,6 +355,103 @@ public class App implements Callable<Integer> {
                         System.out.printf("[MOVED] %s%n", srcName);
                     }
                 }
+            }
+        }
+    }
+
+    @Command (name = "grep", aliases = {"g", "gr"}, description = "Searches for a specified pattern in files within a given directory.")
+    static class GrepCommand implements Callable<Integer> {
+        @Parameters (index = "0", description = "The search pattern (keyword).", defaultValue = "", arity = "0..1")
+        private String pattern;
+
+        @Parameters (index = "1", description = "The directory or file to search in.", defaultValue = "", arity = "0..1")
+        private String targetInput;
+
+        @Option (names = {"-s", "--case-sensitive"}, description = "Perform a case-sensitive search.", defaultValue = "false")
+        private boolean caseSensitive;
+
+        @Option (names = {"-r", "--regex"}, description = "Treat the query as a regular expression.", defaultValue = "false")
+        private boolean regex;
+
+        @Option (names = {"-e", "--ext"}, split = ",", description = "Filter results by file extensions (comma-separated or multiple flags).")
+        private java.util.List<String> exts;
+
+        @Option (names = {"-l", "-f", "--files-with-matches"}, description = "Only display files with matches, not the matching lines.", defaultValue = "false")
+        private boolean filesWithMatches;
+
+        @Option (names = {"-n", "--line-numbers"}, description = "Display line numbers for matching lines.", defaultValue = "false")
+        private boolean lineNumbers;
+
+        @Option (names = {"-x", "--exclude"}, split = ",", description = "Exclude directories by name (comma-separated or multiple flags).")
+        private java.util.List<String> excludeDirs;
+
+        @Option (names = {"-h", "-H", "--hidden"}, description = "Include hidden files and directories (default: excluded).", defaultValue = "false")
+        private boolean hidden;
+
+        @Option (names = {"--help"}, usageHelp = true, description = "Display this help message.")
+        private boolean helpRequested;
+
+        @Override 
+        public Integer call() {
+            if (pattern == null || pattern.isEmpty() || "?".equals(pattern) || "/?".equals(pattern) || "help".equalsIgnoreCase(pattern)) {
+                CommandLine.usage(this, System.out);
+                return 0;
+            }
+
+            GrepOptions options = new GrepOptions(caseSensitive, regex, normalizeExts(exts), filesWithMatches, lineNumbers, normalizeDirs(excludeDirs), hidden);
+            gr grep = new gr();
+            try {
+                GrepResult result;
+                boolean hasTarget = targetInput != null && !targetInput.isEmpty();
+                if ("-".equals(targetInput) || (!hasTarget && hasPipedInput())) {
+                    java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(System.in, java.nio.charset.StandardCharsets.UTF_8));
+                    List<String> lines = reader.lines().toList();
+
+                    boolean isFileList = !lines.isEmpty() && Files.exists(Path.of(lines.get(0)));
+                    if (isFileList) {
+                        List<Path> paths = lines.stream().map(Path::of).toList();
+                        result = grep.grepFiles(paths, pattern, options);
+                    } else {
+                        String content = String.join(System.lineSeparator(), lines);
+                        result = grep.grepStream(new java.io.BufferedReader(new java.io.StringReader(content)), pattern, options);
+                    }
+                } else {
+                    Path root = hasTarget ? Path.of(targetInput) : Path.of(".");
+                    if (!Files.exists(root)) {
+                        System.err.println("Error: " + root + " does not exist.");
+                        return 1;
+                    }
+                    result = grep.grep(root, pattern, options);
+                }
+
+                if (options.filesWithMatches()) {
+                    for (Path path : result.matchingFiles()) {
+                        System.out.println(path);
+                    }
+                } else {
+                    for (GrepMatch match : result.matches()) {
+                        if (match.file() != null) {
+                            if (options.lineNumbers()) {
+                                System.out.printf("%s:%d: %s%n", match.file(), match.lineNumber(), match.lineContent());
+                            } else {
+                                System.out.printf("%s: %s%n", match.file(), match.lineContent());
+                            }
+                        } else {
+                            if (options.lineNumbers()) {
+                                System.out.printf("%d: %s%n", match.lineNumber(), match.lineContent());
+                            } else {
+                                System.out.println(match.lineContent());
+                            }
+                        }
+                    }
+                }
+
+                System.err.println();
+                System.err.printf("Found %d matches in %d ms.%n", result.matchCount(), result.elapsedMillis());
+                return 0;
+            } catch (IOException e) {
+                System.err.println("Error searching directory: "+ e.getMessage());
+                return 1;
             }
         }
     }

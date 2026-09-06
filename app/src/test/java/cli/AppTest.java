@@ -549,6 +549,155 @@ class AppTest {
         }
     }
 
+    @Test
+    void testGrepDirectoryBasic() throws Exception {
+        Files.writeString(tempDir.resolve("sample1.txt"), "hello world\nanother line");
+        Files.writeString(tempDir.resolve("sample2.txt"), "goodbye world");
+
+        String output = runWithOutputCapture("grep", "hello", tempDir.toString());
+        assertTrue(output.contains("sample1.txt: hello world"));
+        assertTrue(output.contains("Found 1 matches"));
+    }
+
+    @Test
+    void testAliasGAndGr() throws Exception {
+        Files.writeString(tempDir.resolve("sample.txt"), "alias test match");
+
+        String outputG = runWithOutputCapture("g", "alias", tempDir.toString());
+        assertTrue(outputG.contains("alias test match"));
+
+        String outputGr = runWithOutputCapture("gr", "alias", tempDir.toString());
+        assertTrue(outputGr.contains("alias test match"));
+    }
+
+    @Test
+    void testGrepSingleFileDirectly() throws Exception {
+        Path singleFile = Files.writeString(tempDir.resolve("direct.txt"), "first\nsingle match\nthird");
+
+        String output = runWithOutputCapture("g", "single", singleFile.toString());
+        assertTrue(output.contains("direct.txt: single match"));
+        assertTrue(output.contains("Found 1 matches"));
+    }
+
+    @Test
+    void testGrepFilesWithMatchesFlags() throws Exception {
+        Files.writeString(tempDir.resolve("file_a.txt"), "target line 1\ntarget line 2");
+        Files.writeString(tempDir.resolve("file_b.txt"), "no match");
+
+        // -l flag
+        String outputL = runWithOutputCapture("g", "target", tempDir.toString(), "-l");
+        assertTrue(outputL.contains("file_a.txt"));
+        assertFalse(outputL.contains("target line 1"), "-l ではマッチ行の内容は出ないべき");
+
+        // -f flag (alias)
+        String outputF = runWithOutputCapture("g", "target", tempDir.toString(), "-f");
+        assertTrue(outputF.contains("file_a.txt"));
+        assertFalse(outputF.contains("target line 1"));
+    }
+
+    @Test
+    void testGrepLineNumbersFlag() throws Exception {
+        Files.writeString(tempDir.resolve("lines.txt"), "line 1\ntarget line\nline 3");
+
+        String output = runWithOutputCapture("g", "target", tempDir.toString(), "-n");
+        assertTrue(output.contains(":2: target line"));
+    }
+
+    @Test
+    void testGrepNonExistentTargetReturnsError() {
+        ByteArrayOutputStream errBaos = new ByteArrayOutputStream();
+        PrintStream origErr = System.err;
+        try {
+            System.setErr(new PrintStream(errBaos, true, StandardCharsets.UTF_8));
+            int exitCode = new CommandLine(new App()).execute("g", "query", tempDir.resolve("not_found").toString());
+            assertEquals(1, exitCode);
+            assertTrue(errBaos.toString(StandardCharsets.UTF_8).contains("does not exist"));
+        } finally {
+            System.setErr(origErr);
+        }
+    }
+
+    @Test
+    void testCliDuExcludeAndHidden() throws Exception {
+        Files.writeString(tempDir.resolve(".env"), "SECRET");
+        Path build = Files.createDirectory(tempDir.resolve("build"));
+        Files.writeString(build.resolve("app.jar"), "binary");
+        Files.writeString(tempDir.resolve("main.txt"), "text");
+
+        // デフォルト: 隠しファイル除外 (main.txt + build/app.jar = 2 files)
+        String outDefault = runWithOutputCapture("du", tempDir.toString());
+        assertTrue(outDefault.contains("Files:                  2"));
+
+        // -x build: build 除外 (main.txt = 1 file)
+        String outExclude = runWithOutputCapture("du", "-x", "build", tempDir.toString());
+        assertTrue(outExclude.contains("Files:                  1"));
+
+        // -h: 隠しファイル包含 (.env + main.txt + build/app.jar = 3 files)
+        String outHidden = runWithOutputCapture("du", "-h", tempDir.toString());
+        assertTrue(outHidden.contains("Files:                  3"));
+
+        // -h -x build: 隠しファイル包含かつ build 除外 (.env + main.txt = 2 files)
+        String outHiddenExclude = runWithOutputCapture("du", "-h", "-x", "build", tempDir.toString());
+        assertTrue(outHiddenExclude.contains("Files:                  2"));
+    }
+
+    @Test
+    void testCliFiExcludeAndHidden() throws Exception {
+        Files.writeString(tempDir.resolve(".config"), "cfg");
+        Path bin = Files.createDirectory(tempDir.resolve("bin"));
+        Files.writeString(bin.resolve("run.exe"), "exe");
+        Files.writeString(tempDir.resolve("app.java"), "class");
+
+        // デフォルト: 隠しファイル除外
+        String outDefault = runWithOutputCapture("fi", "", tempDir.toString());
+        assertFalse(outDefault.contains(".config"));
+        assertTrue(outDefault.contains("app.java"));
+        assertTrue(outDefault.contains("bin"));
+
+        // -x bin: bin 除外
+        String outExclude = runWithOutputCapture("fi", "-x", "bin", "", tempDir.toString());
+        assertFalse(outExclude.contains("bin"));
+        assertTrue(outExclude.contains("app.java"));
+
+        // -h: 隠しファイル包含
+        String outHidden = runWithOutputCapture("fi", "-h", "", tempDir.toString());
+        assertTrue(outHidden.contains(".config"));
+        assertTrue(outHidden.contains("app.java"));
+
+        // -h -x bin: 隠しファイル含むが bin は除外
+        String outBoth = runWithOutputCapture("fi", "-h", "-x", "bin", "", tempDir.toString());
+        assertTrue(outBoth.contains(".config"));
+        assertFalse(outBoth.contains("bin"));
+    }
+
+    @Test
+    void testCliGrepExcludeAndHidden() throws Exception {
+        Files.writeString(tempDir.resolve(".secret.txt"), "magic_token");
+        Path build = Files.createDirectory(tempDir.resolve("build"));
+        Files.writeString(build.resolve("compiled.txt"), "magic_token");
+        Files.writeString(tempDir.resolve("code.txt"), "magic_token");
+
+        // デフォルト: 隠しファイル (.secret.txt) は grep されない (code.txt と build/compiled.txt)
+        String outDefault = runWithOutputCapture("g", "magic_token", tempDir.toString(), "-l");
+        assertFalse(outDefault.contains(".secret.txt"));
+        assertTrue(outDefault.contains("code.txt"));
+        assertTrue(outDefault.contains("compiled.txt"));
+
+        // -x build: build 除外
+        String outExclude = runWithOutputCapture("g", "magic_token", tempDir.toString(), "-x", "build", "-l");
+        assertFalse(outExclude.contains("build"));
+        assertTrue(outExclude.contains("code.txt"));
+
+        // -h: 隠しファイル包含
+        String outHidden = runWithOutputCapture("g", "magic_token", tempDir.toString(), "-h", "-l");
+        assertTrue(outHidden.contains(".secret.txt"));
+
+        // -h -x build: 隠しファイル含めるが build 除外
+        String outBoth = runWithOutputCapture("g", "magic_token", tempDir.toString(), "-h", "-x", "build", "-l");
+        assertTrue(outBoth.contains(".secret.txt"));
+        assertFalse(outBoth.contains("build"));
+    }
+
     // System.out と System.err の出力をキャプチャするヘルパーメソッド
     private String runWithOutputCapture(String... args) {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();

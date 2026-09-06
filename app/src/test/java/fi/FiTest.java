@@ -213,4 +213,50 @@ class FiTest {
             finder.find(tempDir, "[invalid_regex", options);
         });
     }
+
+    @Test
+    void testFindExcludesHiddenByDefault() throws IOException {
+        Files.writeString(tempDir.resolve(".env"), "SECRET");
+        Path gitDir = Files.createDirectory(tempDir.resolve(".git"));
+        Files.writeString(gitDir.resolve("config"), "config");
+        Files.writeString(tempDir.resolve("normal.txt"), "hello");
+
+        fi finder = new fi();
+        fi.FindOptions options = new fi.FindOptions(false, false, false);
+        FindResult result = finder.find(tempDir, "", options);
+
+        assertEquals(1, result.count(), "デフォルトでは隠しファイル・ディレクトリは除外される");
+        assertEquals("normal.txt", result.matches().get(0).getFileName().toString());
+    }
+
+    @Test
+    void testFindIncludesHiddenWhenRequested() throws IOException {
+        Files.writeString(tempDir.resolve(".env"), "SECRET");
+        Path gitDir = Files.createDirectory(tempDir.resolve(".git"));
+        Files.writeString(gitDir.resolve("config"), "config");
+        Files.writeString(tempDir.resolve("normal.txt"), "hello");
+
+        fi finder = new fi();
+        fi.FindOptions options = new fi.FindOptions(false, false, false, false, java.util.Set.of(), java.util.Set.of(), true);
+        FindResult result = finder.find(tempDir, "", options);
+
+        assertEquals(4, result.count(), "hidden = true の場合は隠しファイル・ディレクトリも含まれる (.env, .git, .git/config, normal.txt)");
+    }
+
+    @Test
+    void testFindExcludeDirectories() throws IOException {
+        Path buildDir = Files.createDirectory(tempDir.resolve("build"));
+        Files.writeString(buildDir.resolve("app.jar"), "jar");
+        Path srcDir = Files.createDirectory(tempDir.resolve("src"));
+        Files.writeString(srcDir.resolve("App.java"), "class");
+
+        fi finder = new fi();
+        fi.FindOptions options = new fi.FindOptions(false, false, false, false, java.util.Set.of(), java.util.Set.of("build"), false);
+        FindResult result = finder.find(tempDir, "", options);
+
+        assertEquals(2, result.count(), "build ディレクトリとその中身は除外され、src と App.java のみマッチする");
+        for (Path match : result.matches()) {
+            assertFalse(match.toString().contains("build"), "マッチ結果に build は含まれないべき");
+        }
+    }
 }

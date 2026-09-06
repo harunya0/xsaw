@@ -18,17 +18,25 @@ public class fi {
         private final boolean fileOnly;
         private final boolean regex;
         private final java.util.Set<String> exts;
+        private final java.util.Set<String> excludeDirs;
+        private final boolean hidden;
 
-        public FindOptions(boolean caseSensitive, boolean dirOnly, boolean fileOnly, boolean regex, java.util.Set<String> exts) {
+        public FindOptions(boolean caseSensitive, boolean dirOnly, boolean fileOnly, boolean regex, java.util.Set<String> exts, java.util.Set<String> excludeDirs, boolean hidden) {
             this.caseSensitive = caseSensitive;
             this.dirOnly = dirOnly;
             this.fileOnly = fileOnly;
             this.regex = regex;
             this.exts = exts == null ? java.util.Set.of() : exts;
+            this.excludeDirs = excludeDirs == null ? java.util.Set.of() : excludeDirs;
+            this.hidden = hidden;
+        }
+
+        public FindOptions(boolean caseSensitive, boolean dirOnly, boolean fileOnly, boolean regex, java.util.Set<String> exts) {
+            this(caseSensitive, dirOnly, fileOnly, regex, exts, java.util.Set.of(), false);
         }
 
         public FindOptions(boolean caseSensitive, boolean dirOnly, boolean fileOnly, java.util.Set<String> exts) {
-            this(caseSensitive, dirOnly, fileOnly, false, exts);
+            this(caseSensitive, dirOnly, fileOnly, false, exts, java.util.Set.of(), false);
         }
 
         public FindOptions(boolean caseSensitive, boolean dirOnly, boolean fileOnly) {
@@ -40,6 +48,8 @@ public class fi {
         public boolean fileOnly() { return fileOnly; }
         public boolean regex() { return regex; }
         public java.util.Set<String> exts() { return exts; }
+        public java.util.Set<String> excludeDirs() { return excludeDirs; }
+        public boolean hidden() { return hidden; }
     }
 
     public FindResult find(Path root, String query, FindOptions options) throws IOException {
@@ -58,11 +68,17 @@ public class fi {
             try (var stream = Files.newDirectoryStream(root)) {
                 for (Path entry : stream) {
                     if (Files.isDirectory(entry)) {
+                        if ((!options.hidden() && isHidden(entry)) || isExcludedDir(entry, options.excludeDirs())) {
+                            continue;
+                        }
                         if (isMatch(entry, true, query, finalPattern, options)) {
                             matchedPaths.add(entry);
                         }
                         executor.submit(() -> scanSubTree(entry, query, options, finalPattern, matchedPaths));
                     } else if (Files.isRegularFile(entry)) {
+                        if (!options.hidden() && isHidden(entry)) {
+                            continue;
+                        }
                         if (isMatch(entry, false, query, finalPattern, options)) {
                             matchedPaths.add(entry);
                         }
@@ -87,6 +103,9 @@ public class fi {
             Files.walkFileTree(dir, new SimpleFileVisitor<>() {
                 @Override 
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                    if (!options.hidden() && isHidden(file)) {
+                        return FileVisitResult.CONTINUE;
+                    }
                     if (isMatch(file, false, query, pattern, options)) {
                         matchedPaths.add(file);
                     }
@@ -95,8 +114,13 @@ public class fi {
 
                 @Override 
                 public FileVisitResult preVisitDirectory(Path dirPath, BasicFileAttributes attrs) {
-                    if (!dirPath.equals(dir) && isMatch(dirPath, true, query, pattern, options)) {
-                        matchedPaths.add(dirPath);
+                    if (!dirPath.equals(dir)) {
+                        if ((!options.hidden() && isHidden(dirPath)) || isExcludedDir(dirPath, options.excludeDirs())) {
+                            return FileVisitResult.SKIP_SUBTREE;
+                        }
+                        if (isMatch(dirPath, true, query, pattern, options)) {
+                            matchedPaths.add(dirPath);
+                        }
                     }
                     return FileVisitResult.CONTINUE;
                 }
@@ -109,6 +133,33 @@ public class fi {
         } catch (IOException e) {
             // through the exception
         }
+    }
+
+    private static boolean isHidden(Path path) {
+        Path fileName = path.getFileName();
+        if (fileName != null && fileName.toString().startsWith(".")) {
+            return true;
+        }
+        try {
+            return Files.isHidden(path);
+        } catch (IOException | SecurityException e) {
+            return false;
+        }
+    }
+
+    private static boolean isExcludedDir(Path dir, java.util.Set<String> excludeDirs) {
+        if (excludeDirs == null || excludeDirs.isEmpty()) {
+            return false;
+        }
+        Path fileName = dir.getFileName();
+        if (fileName == null) return false;
+        String name = fileName.toString();
+        for (String excluded : excludeDirs) {
+            if (name.equalsIgnoreCase(excluded)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean isMatch(Path path, boolean isDir, String query, Pattern pattern, FindOptions options) {

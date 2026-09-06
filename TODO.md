@@ -18,6 +18,7 @@
 | | パイプライン連携 (`f \| du`) | ◯ | ◯ | **完了** (stdout/stderr分離) |
 | **Packaging** | Windows / Linux ネイティブ化 (`packageNative`) | ◯ | ◯ | **完了** (`dist/xsaw`) |
 | **File Operations** | ファイル移動コマンド (`xsaw mv`, `m`) | ◯ | ◯ | **完了** (`-d`, `-f`, `-n`, `-v`, 複数指定, 末尾`/`対応) |
+| **Content Search** | 仮想スレッド並行テキスト検索 (`grep`, `g`, `gr`) | ◯ | ◯ | **完了** (`-s`, `-r`, `-e`, `-l/-f`, `-n`, パイプ対応) |
 | **Operation History** | SQLite による操作履歴ロギング | ◯ | ❌ | 🚨 **未実装** (DB基盤が必要) |
 | **Conflict Handling** | 移動先の競合検知 & 対話型解決 (1〜5) | ◯ | ❌ | 🚨 **未実装** (UI/CLIプロンプト) |
 | **Restore** | 操作ロールバック (`xsaw undo`) | ◯ | ❌ | 🚨 **未実装** (履歴からの逆移動) |

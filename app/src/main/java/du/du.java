@@ -20,10 +20,14 @@ public class du {
     }
 
     public FileResult analyze(Path root) throws IOException {
-        return analyze(root, java.util.Set.of());
+        return analyze(root, java.util.Set.of(), java.util.Set.of(), false);
     }
 
     public FileResult analyze(Path root, java.util.Set<String> fileExt) throws IOException {
+        return analyze(root, fileExt, java.util.Set.of(), false);
+    }
+
+    public FileResult analyze(Path root, java.util.Set<String> fileExt, java.util.Set<String> excludeDirs, boolean hidden) throws IOException {
         LongAdder fileCount = new LongAdder();
         LongAdder dirCount = new LongAdder();
         LongAdder totalBytes = new LongAdder();
@@ -34,9 +38,15 @@ public class du {
             try (var stream = Files.newDirectoryStream(root)) {
                 for (Path entry : stream) {
                     if (Files.isDirectory(entry)) {
+                        if ((!hidden && isHidden(entry)) || isExcludedDir(entry, excludeDirs)) {
+                            continue;
+                        }
                         dirCount.increment();
-                        executor.submit(() -> scanSubTree(entry, fileCount, dirCount, totalBytes, extMap, fileExt));
+                        executor.submit(() -> scanSubTree(entry, fileCount, dirCount, totalBytes, extMap, fileExt, excludeDirs, hidden));
                     } else if (Files.isRegularFile(entry)) {
+                        if (!hidden && isHidden(entry)) {
+                            continue;
+                        }
                         recordFile(entry, Files.size(entry), fileCount, totalBytes, extMap, fileExt);
                     }
                 }
@@ -60,13 +70,18 @@ public class du {
         LongAdder dirCount,
         LongAdder totalBytes,
         ConcurrentHashMap<String, ExtAccumulator> extMap,
-        java.util.Set<String> fileExt
+        java.util.Set<String> fileExt,
+        java.util.Set<String> excludeDirs,
+        boolean hidden
     ) {
         try {
             Files.walkFileTree(dir, new SimpleFileVisitor<>() {
                 @Override
                 public FileVisitResult preVisitDirectory(Path dirPath, BasicFileAttributes attrs) {
                     if (!dirPath.equals(dir)) {
+                        if ((!hidden && isHidden(dirPath)) || isExcludedDir(dirPath, excludeDirs)) {
+                            return FileVisitResult.SKIP_SUBTREE;
+                        }
                         dirCount.increment();
                     }
                     return FileVisitResult.CONTINUE;
@@ -74,6 +89,9 @@ public class du {
 
                 @Override
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                    if (!hidden && isHidden(file)) {
+                        return FileVisitResult.CONTINUE;
+                    }
                     if (Files.isRegularFile(file)) {
                         recordFile(file, attrs.size(), fileCount, totalBytes, extMap, fileExt);
                     }
@@ -87,6 +105,33 @@ public class du {
             });
         } catch (IOException e) {
         }
+    }
+
+    private static boolean isHidden(Path path) {
+        Path fileName = path.getFileName();
+        if (fileName != null && fileName.toString().startsWith(".")) {
+            return true;
+        }
+        try {
+            return Files.isHidden(path);
+        } catch (IOException | SecurityException e) {
+            return false;
+        }
+    }
+
+    private static boolean isExcludedDir(Path dir, java.util.Set<String> excludeDirs) {
+        if (excludeDirs == null || excludeDirs.isEmpty()) {
+            return false;
+        }
+        Path fileName = dir.getFileName();
+        if (fileName == null) return false;
+        String name = fileName.toString();
+        for (String excluded : excludeDirs) {
+            if (name.equalsIgnoreCase(excluded)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void recordFile(

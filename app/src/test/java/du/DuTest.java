@@ -127,4 +127,45 @@ class DuTest {
         assertTrue(result.extensions().containsKey("java"));
         assertFalse(result.extensions().containsKey("jpg"), "jpg は集計から除外される");
     }
+
+    @Test
+    void testAnalyzeExcludeDirectories() throws IOException {
+        Path buildDir = Files.createDirectory(tempDir.resolve("build"));
+        Files.writeString(buildDir.resolve("built.txt"), "built content");
+        Files.writeString(tempDir.resolve("source.txt"), "source content");
+
+        du analyzer = new du();
+        FileResult result = analyzer.analyze(tempDir, java.util.Set.of(), java.util.Set.of("build"), false);
+
+        assertEquals(1, result.fileCount(), "build ディレクトリ配下のファイルは除外される");
+        assertEquals(0, result.dirCount(), "build ディレクトリ自体も除外される");
+    }
+
+    @Test
+    void testAnalyzeExcludesHiddenByDefault() throws IOException {
+        Files.writeString(tempDir.resolve(".env"), "SECRET=123");
+        Path gitDir = Files.createDirectory(tempDir.resolve(".git"));
+        Files.writeString(gitDir.resolve("config"), "git config");
+        Files.writeString(tempDir.resolve("visible.txt"), "hello");
+
+        du analyzer = new du();
+        FileResult result = analyzer.analyze(tempDir);
+
+        assertEquals(1, result.fileCount(), "デフォルトでは隠しファイルは集計されない");
+        assertEquals(0, result.dirCount(), "デフォルトでは隠しディレクトリは集計されない");
+    }
+
+    @Test
+    void testAnalyzeIncludesHiddenWhenRequested() throws IOException {
+        Files.writeString(tempDir.resolve(".env"), "SECRET=123");
+        Path gitDir = Files.createDirectory(tempDir.resolve(".git"));
+        Files.writeString(gitDir.resolve("config"), "git config");
+        Files.writeString(tempDir.resolve("visible.txt"), "hello");
+
+        du analyzer = new du();
+        FileResult result = analyzer.analyze(tempDir, java.util.Set.of(), java.util.Set.of(), true);
+
+        assertEquals(3, result.fileCount(), "hidden = true の場合は隠しファイルも含めて集計される");
+        assertEquals(1, result.dirCount(), "hidden = true の場合は隠しディレクトリも含めて集計される");
+    }
 }
