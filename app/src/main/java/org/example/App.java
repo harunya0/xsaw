@@ -160,10 +160,10 @@ public class App implements Callable<Integer> {
 
     @Command (name = "fi", aliases = {"f"}, mixinStandardHelpOptions = true, description = "Searches for files and directories matching a specified query within a given directory.")
     static class FiCommand implements Callable<Integer> {
-        @Parameters (index = "0", description = "The search query (keyword).")
-        private String query;
+        @Parameters (index = "0", description = "The search query (keyword).", defaultValue = "", arity = "0..1")
+        private String query = "";
 
-        @Parameters (index = "1", description = "The directory to search in.", defaultValue = ".")
+        @Parameters (index = "1", description = "The directory to search in.", defaultValue = ".", arity = "0..1")
         private Path targetDir;
 
         @Option (names = {"-s", "--case-sensitive"}, description = "Perform a case-sensitive search.", defaultValue = "false")
@@ -186,6 +186,16 @@ public class App implements Callable<Integer> {
             if ("?".equals(query) || "/?".equals(query) || "help".equalsIgnoreCase(query)) {
                 CommandLine.usage(this, System.out);
                 return 0;
+            }
+
+            if (targetDir == null) {
+                targetDir = Path.of(".");
+            }
+
+            // もし `xsaw f . -e java` のように "." が query として渡された場合は検索ルートとみなす
+            if (".".equals(query) || "./".equals(query) || ".\\".equals(query)) {
+                targetDir = Path.of(query);
+                query = "";
             }
 
             Path root = targetDir.toAbsolutePath().normalize();

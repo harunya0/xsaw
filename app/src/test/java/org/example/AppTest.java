@@ -208,6 +208,19 @@ class AppTest {
     }
 
     @Test
+    void testFiExtOptionWithoutQuery() throws Exception {
+        Files.createFile(tempDir.resolve("alpha.java"));
+        Files.createFile(tempDir.resolve("beta.java"));
+        Files.createFile(tempDir.resolve("gamma.py"));
+
+        String output = runWithOutputCapture("fi", "-e", "java", "", tempDir.toString());
+        assertTrue(output.contains("alpha.java"));
+        assertTrue(output.contains("beta.java"));
+        assertFalse(output.contains("gamma.py"));
+        assertTrue(output.contains("Found 2 matches"));
+    }
+
+    @Test
     void testFiConflictingDirAndFileOptions() {
         int exitCode = new CommandLine(new App()).execute("fi", "-d", "-f", "query", tempDir.toString());
         assertEquals(1, exitCode, "--dir-only と --file-only の同時指定はエラーになるべき");
