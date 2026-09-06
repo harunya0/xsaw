@@ -83,7 +83,7 @@ public class App implements Callable<Integer> {
 
         @Override
         public Integer call() {
-            if ("?".equals(targetInput) || "/?".equals(targetInput) || "help".equalsIgnoreCase(targetInput)) {
+            if (helpRequested || "?".equals(targetInput) || "/?".equals(targetInput) || "help".equalsIgnoreCase(targetInput)) {
                 CommandLine.usage(this, System.out);
                 return 0;
             }
@@ -216,7 +216,7 @@ public class App implements Callable<Integer> {
 
         @Override 
         public Integer call() {
-            if ("?".equals(query) || "/?".equals(query) || "help".equalsIgnoreCase(query)) {
+            if (helpRequested || "?".equals(query) || "/?".equals(query) || "help".equalsIgnoreCase(query)) {
                 CommandLine.usage(this, System.out);
                 return 0;
             }
@@ -393,7 +393,7 @@ public class App implements Callable<Integer> {
 
         @Override 
         public Integer call() {
-            if (pattern == null || pattern.isEmpty() || "?".equals(pattern) || "/?".equals(pattern) || "help".equalsIgnoreCase(pattern)) {
+            if (helpRequested || pattern == null || pattern.isEmpty() || "?".equals(pattern) || "/?".equals(pattern) || "help".equalsIgnoreCase(pattern)) {
                 CommandLine.usage(this, System.out);
                 return 0;
             }
