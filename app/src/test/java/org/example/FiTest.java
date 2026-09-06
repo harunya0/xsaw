@@ -7,6 +7,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -168,5 +169,48 @@ class FiTest {
 
         assertEquals(1, result.count());
         assertEquals("find_me.java", result.matches().get(0).getFileName().toString());
+    }
+
+    @Test
+    void testFindByRegex() throws IOException {
+        Files.createFile(tempDir.resolve("log_01.txt"));
+        Files.createFile(tempDir.resolve("log_02.txt"));
+        Files.createFile(tempDir.resolve("log_abc.txt"));
+        Files.createFile(tempDir.resolve("other.txt"));
+
+        fi finder = new fi();
+        // 数字2桁にマッチ: log_[0-9]{2}
+        fi.FindOptions options = new fi.FindOptions(false, false, false, true, java.util.Set.of("txt"));
+        FindResult result = finder.find(tempDir, "log_[0-9]{2}", options);
+
+        assertEquals(2, result.count(), "log_01.txt と log_02.txt の2件がマッチするべき");
+    }
+
+    @Test
+    void testFindByRegexCaseSensitive() throws IOException {
+        Files.createFile(tempDir.resolve("AppController.java"));
+        Files.createFile(tempDir.resolve("app_helper.java"));
+
+        fi finder = new fi();
+        // 大文字始まり正規表現 + caseSensitive = true
+        fi.FindOptions optionsCaseSensitive = new fi.FindOptions(true, false, false, true, java.util.Set.of());
+        FindResult result = finder.find(tempDir, "^[A-Z].*", optionsCaseSensitive);
+
+        assertEquals(1, result.count());
+        assertEquals("AppController.java", result.matches().get(0).getFileName().toString());
+
+        // caseSensitive = false だと両方マッチ
+        fi.FindOptions optionsIgnoreCase = new fi.FindOptions(false, false, false, true, java.util.Set.of());
+        FindResult resultAll = finder.find(tempDir, "^[A-Z].*", optionsIgnoreCase);
+        assertEquals(2, resultAll.count());
+    }
+
+    @Test
+    void testFindInvalidRegexThrows() {
+        fi finder = new fi();
+        fi.FindOptions options = new fi.FindOptions(false, false, false, true, java.util.Set.of());
+        assertThrows(java.util.regex.PatternSyntaxException.class, () -> {
+            finder.find(tempDir, "[invalid_regex", options);
+        });
     }
 }

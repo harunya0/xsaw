@@ -127,6 +127,17 @@ Found 4 matches in 27 ms.
 * `-d, --dir-only`: Search for directories only.
 * `-f, --file-only`: Search for files only.
 * `-e, --ext <ext...>`: Filter results by file extensions (comma-separated like `java,txt` or repeated flags).
+* `-r, --regex`: Treat search query as a regular expression.
+
+#### Regular expression search (`-r`)
+
+```bash
+# Match files with digits (e.g. order_123.json, test_01.java)
+xsaw f "order_\d+" . -r
+
+# Search with regex and case sensitivity
+xsaw f "^[A-Z].*" . -r -s
+```
 
 #### Filter by file extension (`-e`)
 

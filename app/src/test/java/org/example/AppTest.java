@@ -330,6 +330,22 @@ class AppTest {
         assertTrue(Files.exists(subDir.resolve("alias_src.txt")));
     }
 
+    @Test
+    void testFiRegexOption() throws Exception {
+        Files.createFile(tempDir.resolve("order_123.json"));
+        Files.createFile(tempDir.resolve("order_abc.json"));
+
+        String output = runWithOutputCapture("fi", "-r", "order_\\d+", tempDir.toString());
+        assertTrue(output.contains("order_123.json"));
+        assertFalse(output.contains("order_abc.json"));
+    }
+
+    @Test
+    void testFiInvalidRegexReturnsErrorCode() {
+        int exitCode = new CommandLine(new App()).execute("fi", "-r", "[unclosed", tempDir.toString());
+        assertEquals(1, exitCode, "不正な正規表現は終了コード 1 で終了するべき");
+    }
+
     // System.out と System.err の出力をキャプチャするヘルパーメソッド
     private String runWithOutputCapture(String... args) {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();

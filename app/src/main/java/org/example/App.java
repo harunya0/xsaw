@@ -162,6 +162,9 @@ public class App implements Callable<Integer> {
         @Option (names = {"-e", "--ext"}, split = ",", description = "Filter results by file extensions (comma-separated or multiple flags).")
         private java.util.List<String> exts;
 
+        @Option (names = {"-r", "--regex"}, description = "Treat the query as a regular expression.", defaultValue = "false")
+        private boolean regex;
+
         @Override 
         public Integer call() {
             Path root = targetDir.toAbsolutePath().normalize();
@@ -178,7 +181,7 @@ public class App implements Callable<Integer> {
 
             try {
                 fi finder = new fi();
-                fi.FindOptions options = new fi.FindOptions(caseSensitive, dirOnly, fileOnly, normalizeExts(exts));
+                fi.FindOptions options = new fi.FindOptions(caseSensitive, dirOnly, fileOnly, regex, normalizeExts(exts));
                 FindResult result = finder.find(root, query, options);
 
                 for (Path relativeMatch : result.relativeMatches()) {
@@ -188,6 +191,9 @@ public class App implements Callable<Integer> {
                 System.err.println();
                 System.err.printf("Found %d matches in %d ms.%n", result.count(), result.elapsedMillis());
                 return 0;
+            } catch (java.util.regex.PatternSyntaxException e) {
+                System.err.println("Invalid regular expression: " + e.getDescription());
+                return 1;
             } catch (IOException e) {
                 System.err.println("Error searching directory: " + e.getMessage());
                 return 1;
