@@ -100,4 +100,15 @@ class MvTest {
         assertTrue(Files.exists(dir.resolve("f1.txt")));
         assertTrue(Files.exists(dir.resolve("f2.txt")));
     }
+
+    @Test
+    void testGenerateUniquePath() throws IOException {
+        Path f = Files.writeString(tempDir.resolve("sample.txt"), "hello");
+        Path unique1 = mv.generateUniquePath(f);
+        assertEquals(tempDir.resolve("sample (1).txt"), unique1);
+
+        Files.writeString(unique1, "second");
+        Path unique2 = mv.generateUniquePath(f);
+        assertEquals(tempDir.resolve("sample (2).txt"), unique2);
+    }
 }

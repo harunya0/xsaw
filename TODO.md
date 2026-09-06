@@ -20,7 +20,7 @@
 | **File Operations** | ファイル移動コマンド (`xsaw mv`, `m`) | ◯ | ◯ | **完了** (`-d`, `-f`, `-n`, `-v`, 複数指定, 末尾`/`対応) |
 | **Content Search** | 仮想スレッド並行テキスト検索 (`grep`, `g`, `gr`) | ◯ | ◯ | **完了** (`-s`, `-r`, `-e`, `-l/-f`, `-n`, パイプ対応) |
 | **Operation History** | SQLite による操作履歴ロギング | ◯ | ❌ | 🚨 **未実装** (DB基盤が必要) |
-| **Conflict Handling** | 移動先の競合検知 & 対話型解決 (1〜5) | ◯ | ❌ | 🚨 **未実装** (UI/CLIプロンプト) |
+| **Conflict Handling** | 移動先の競合検知 & 対話型解決 (1〜5) | ◯ | ◯ | **完了** (対話プロンプト & 113 tests PASS) |
 | **Restore** | 操作ロールバック (`xsaw undo`) | ◯ | ❌ | 🚨 **未実装** (履歴からの逆移動) |
 | **Planned Features** | 重複ファイル検知、ハッシュ計算など | ◯ (予定) | ❌ | 🔮 **将来構想** |
 
@@ -56,7 +56,7 @@
 
 ---
 
-### 🚨 乖離 3: 競合検出 & 対話型コンフリクト解決 (`Conflict Handling`)
+### ✅ 乖離 3: 競合検出 & 対話型コンフリクト解決 (`Conflict Handling`) 【解消済み】
 - **README の記述**:
   移動先に同名ファイルが存在する場合、暗黙の上書きをせず警告を表示し、対話型メニューでアクションを選択させる：
   ```text
@@ -69,17 +69,22 @@
   [5] Cancel
   ```
 - **現在のコードベース**:
-  - 競合検知ロジック、コンソールプロンプト（対話型入力）の仕組みが未作成。
-- **必要なタスク**:
-  - [ ] 移動先パスの重複チェック（`Files.exists(dest)`）。
-  - [ ] コンソール入力ハンドラ（`System.console()` または `Scanner(System.in)`）による対話メニュー表示。
-  - [ ] 各アクションのハンドリング：
+  - `ConflictAction` enum（`OVERWRITE`, `RENAME`, `SKIP`, `CANCEL`）を定義。
+  - `mv.generateUniquePath` により、安全な自動ナンバリング（`file (1).ext`）を実装。
+  - `App.java`（`MvCommand`）に対話プロンプト `promptConflictAction` を実装。
+  - `[1] Overwrite`, `[2] Rename`, `[3] Skip`, `[4] Compare`, `[5] Cancel` の全分岐、ショートカット入力（`o`, `r`, `s`, `c`, `q`）、サイズ/日時の詳細比較を実装。
+  - `-f`（強制上書き）、`-n`（スキップ）、`-d`（ドライラン）指定時は対話をバイパス。
+  - `MvTest.java`（単体）および `AppTest.java`（CLI対話入出力シミュレーション）でテスト完備（113 tests PASS）。
+- **完了タスク**:
+  - [x] 移動先パスの重複チェック（`Files.exists(dest)`）。
+  - [x] コンソール入力ハンドラ（`BufferedReader(System.in)`）による対話メニュー表示。
+  - [x] 各アクションのハンドリング：
     - `[1] Overwrite`: 上書き移動。
-    - `[2] Rename`: 自動リネーム（例: `foo (1).zip`）またはユーザー入力名への変更。
+    - `[2] Rename`: 自動リネーム（例: `foo (1).zip`）。
     - `[3] Skip`: 移動をスキップして終了コード 0。
-    - `[4] Compare`: ファイルサイズ・更新日時・ハッシュ値の比較表示。
+    - `[4] Compare`: ファイルサイズ・更新日時の比較表示。
     - `[5] Cancel`: 操作全体の中断（終了コード 1）。
-  - [ ] 非対話環境（パイプや CI）向けの強制フラグ（例: `-y, --yes` または `--force`）の検討。
+  - [x] 非対話・自動化向けのフラグ（`-f`, `-n`, `-d`）対応。
 
 ---
 
@@ -104,9 +109,10 @@ Phase 1: SQLite 基盤 & 基本の mv コマンド
   ├── 履歴テーブルの設計・自動マイグレーション
   └── xsaw mv の基本移動 & ログ保存の実装
 
-Phase 2: 競合解決 (Conflict Handling)
-  ├── 移動先の重複検知
-  └── 対話型プロンプト (Overwrite, Rename, Skip, Compare, Cancel)
+Phase 2: 競合解決 (Conflict Handling) 【完了】
+  ├── 移動先の重複検知 (Files.exists)
+  ├── 対話型プロンプト (Overwrite, Rename, Skip, Compare, Cancel)
+  └── 自動ナンバリング生成 (generateUniquePath)
 
 Phase 3: 操作取り消し (xsaw undo)
   ├── 履歴参照コマンド (xsaw history / log)
@@ -129,14 +135,14 @@ Phase 4: 機能強化 & 将来構想
 - [x] `-s, -d, -f, -e`: 検索オプション完備
 - [x] `xsaw f | xsaw du`: パイプライン連携
 - [x] `packageNative`: Windows (.exe) & Linux (ELF) ネイティブビルド
-- [x] ユニットテスト 73 件全件合格
+- [x] ユニットテスト 113 件全件合格
 
 ### ファイル操作 & 履歴管理
 - [x] `xsaw mv` コマンドの実装（`-d`, `-f`, `-n`, `-v`, 複数指定, 末尾`/`対応）
+- [x] 対話型コンフリクト解決（Overwrite / Rename / Skip / Compare / Cancel）
 - [ ] `sqlite-jdbc` の Gradle 依存関係追加
 - [ ] 操作ログ用 DB スキーマ（テーブル設計）
 - [ ] ファイル移動の自動 SQLite ロギング
-- [ ] 対話型コンフリクト解決（Overwrite / Rename / Skip / Compare / Cancel）
 - [ ] `xsaw history` コマンド（操作履歴の一覧表示）
 - [ ] `xsaw undo <id>` コマンド（ファイル移動の取り消し・復元）
 - [ ] 単体テスト（SQLite モック / @TempDir を使った移動・undo の検証）

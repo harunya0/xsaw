@@ -4,7 +4,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -698,21 +700,193 @@ class AppTest {
         assertFalse(outBoth.contains("build"));
     }
 
-    // System.out と System.err の出力をキャプチャするヘルパーメソッド
-    private String runWithOutputCapture(String... args) {
+    @Test
+    void testCliMvBasicMove() throws Exception {
+        Path src = Files.writeString(tempDir.resolve("src.txt"), "hello");
+        Path dest = tempDir.resolve("dest.txt");
+
+        CommandResult res = runWithInputAndOutputCapture(null, "mv", src.toString(), dest.toString());
+        assertEquals(0, res.exitCode());
+        assertTrue(res.output().contains("[MOVED]"));
+        assertFalse(Files.exists(src));
+        assertTrue(Files.exists(dest));
+        assertEquals("hello", Files.readString(dest));
+    }
+
+    @Test
+    void testCliMvDryRun() throws Exception {
+        Path src = Files.writeString(tempDir.resolve("src.txt"), "hello");
+        Path dest = tempDir.resolve("dest.txt");
+
+        CommandResult res = runWithInputAndOutputCapture(null, "mv", "-d", src.toString(), dest.toString());
+        assertEquals(0, res.exitCode());
+        assertTrue(res.output().contains("[DRY RUN]"));
+        assertTrue(Files.exists(src));
+        assertFalse(Files.exists(dest));
+    }
+
+    @Test
+    void testCliMvForceOverwrite() throws Exception {
+        Path src = Files.writeString(tempDir.resolve("src.txt"), "new content");
+        Path dest = Files.writeString(tempDir.resolve("dest.txt"), "old content");
+
+        // -f により対話プロンプトなしで上書き
+        CommandResult res = runWithInputAndOutputCapture(null, "mv", "-f", src.toString(), dest.toString());
+        assertEquals(0, res.exitCode());
+        assertTrue(res.output().contains("[OVERWRITTEN]"));
+        assertFalse(Files.exists(src));
+        assertEquals("new content", Files.readString(dest));
+    }
+
+    @Test
+    void testCliMvNoClobberSkip() throws Exception {
+        Path src = Files.writeString(tempDir.resolve("src.txt"), "new content");
+        Path dest = Files.writeString(tempDir.resolve("dest.txt"), "old content");
+
+        // -n により対話プロンプトなしでスキップ
+        CommandResult res = runWithInputAndOutputCapture(null, "mv", "-n", src.toString(), dest.toString());
+        assertEquals(0, res.exitCode());
+        assertTrue(res.output().contains("[SKIPPED]"));
+        assertTrue(Files.exists(src));
+        assertEquals("old content", Files.readString(dest));
+    }
+
+    @Test
+    void testCliMvConflictPromptOverwrite() throws Exception {
+        Path src = Files.writeString(tempDir.resolve("src.txt"), "new data");
+        Path dest = Files.writeString(tempDir.resolve("dest.txt"), "old data");
+
+        // [1] Overwrite
+        CommandResult res = runWithInputAndOutputCapture("1\n", "mv", src.toString(), dest.toString());
+        assertEquals(0, res.exitCode());
+        assertTrue(res.output().contains("Conflict detected: dest.txt already exists."));
+        assertTrue(res.output().contains("[OVERWRITTEN]"));
+        assertFalse(Files.exists(src));
+        assertEquals("new data", Files.readString(dest));
+    }
+
+    @Test
+    void testCliMvConflictPromptRename() throws Exception {
+        Path src = Files.writeString(tempDir.resolve("src.txt"), "new data");
+        Path dest = Files.writeString(tempDir.resolve("dest.txt"), "old data");
+
+        // [2] Rename
+        CommandResult res = runWithInputAndOutputCapture("2\n", "mv", src.toString(), dest.toString());
+        assertEquals(0, res.exitCode());
+        assertTrue(res.output().contains("Conflict detected: dest.txt already exists."));
+        assertTrue(res.output().contains("[RENAMED]"));
+        assertFalse(Files.exists(src));
+        assertEquals("old data", Files.readString(dest));
+        Path renamed = tempDir.resolve("dest (1).txt");
+        assertTrue(Files.exists(renamed));
+        assertEquals("new data", Files.readString(renamed));
+    }
+
+    @Test
+    void testCliMvConflictPromptSkip() throws Exception {
+        Path src = Files.writeString(tempDir.resolve("src.txt"), "new data");
+        Path dest = Files.writeString(tempDir.resolve("dest.txt"), "old data");
+
+        // [3] Skip
+        CommandResult res = runWithInputAndOutputCapture("3\n", "mv", src.toString(), dest.toString());
+        assertEquals(0, res.exitCode());
+        assertTrue(res.output().contains("Conflict detected: dest.txt already exists."));
+        assertTrue(res.output().contains("[SKIPPED]"));
+        assertTrue(Files.exists(src));
+        assertEquals("old data", Files.readString(dest));
+    }
+
+    @Test
+    void testCliMvConflictPromptCompareThenCancel() throws Exception {
+        Path src = Files.writeString(tempDir.resolve("src.txt"), "new data");
+        Path dest = Files.writeString(tempDir.resolve("dest.txt"), "old data");
+
+        // [4] Compare -> [5] Cancel
+        CommandResult res = runWithInputAndOutputCapture("4\n5\n", "mv", src.toString(), dest.toString());
+        assertEquals(1, res.exitCode());
+        assertTrue(res.output().contains("----------------------------------------"));
+        assertTrue(res.output().contains("Source:"));
+        assertTrue(res.output().contains("Destination:"));
+        assertTrue(res.output().contains("Operation cancelled by user."));
+        assertTrue(Files.exists(src));
+        assertEquals("old data", Files.readString(dest));
+    }
+
+    @Test
+    void testCliMvConflictPromptInvalidChoiceThenSkip() throws Exception {
+        Path src = Files.writeString(tempDir.resolve("src.txt"), "new data");
+        Path dest = Files.writeString(tempDir.resolve("dest.txt"), "old data");
+
+        // "invalid\n" -> "s\n" (文字エイリアス 's' でスキップ)
+        CommandResult res = runWithInputAndOutputCapture("invalid\ns\n", "mv", src.toString(), dest.toString());
+        assertEquals(0, res.exitCode());
+        assertTrue(res.output().contains("Invalid choice: 'invalid'"));
+        assertTrue(res.output().contains("[SKIPPED]"));
+        assertTrue(Files.exists(src));
+    }
+
+    @Test
+    void testCliMvConflictPromptEofCancels() throws Exception {
+        Path src = Files.writeString(tempDir.resolve("src.txt"), "new data");
+        Path dest = Files.writeString(tempDir.resolve("dest.txt"), "old data");
+
+        // 入力なし (EOF) -> キャンセル
+        CommandResult res = runWithInputAndOutputCapture("", "mv", src.toString(), dest.toString());
+        assertEquals(1, res.exitCode());
+        assertTrue(res.output().contains("Operation cancelled by user."));
+        assertTrue(Files.exists(src));
+    }
+
+    @Test
+    void testCliMvMultipleFilesWithConflict() throws Exception {
+        Path subDir = Files.createDirectory(tempDir.resolve("targetDir"));
+        Path existing = Files.writeString(subDir.resolve("a.txt"), "existing");
+
+        Path fileA = Files.writeString(tempDir.resolve("a.txt"), "new-a");
+        Path fileB = Files.writeString(tempDir.resolve("b.txt"), "new-b");
+
+        // [2] Rename for a.txt, b.txt moves normally
+        CommandResult res = runWithInputAndOutputCapture("2\n", "m", fileA.toString(), fileB.toString(), subDir.toString());
+        assertEquals(0, res.exitCode());
+        assertTrue(res.output().contains("[RENAMED]"));
+        assertTrue(res.output().contains("[MOVED]"));
+
+        assertEquals("existing", Files.readString(existing));
+        assertTrue(Files.exists(subDir.resolve("a (1).txt")));
+        assertEquals("new-a", Files.readString(subDir.resolve("a (1).txt")));
+        assertTrue(Files.exists(subDir.resolve("b.txt")));
+        assertEquals("new-b", Files.readString(subDir.resolve("b.txt")));
+    }
+
+    // コマンド実行結果を保持するレコード
+    private record CommandResult(int exitCode, String output) {}
+
+    // System.in, System.out, System.err をキャプチャして実行するヘルパーメソッド
+    private CommandResult runWithInputAndOutputCapture(String input, String... args) {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         PrintStream originalOut = System.out;
         PrintStream originalErr = System.err;
+        InputStream originalIn = System.in;
         try {
             PrintStream ps = new PrintStream(baos, true, StandardCharsets.UTF_8);
             System.setOut(ps);
             System.setErr(ps);
+            if (input != null) {
+                System.setIn(new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8)));
+            }
             int exitCode = new CommandLine(new App()).execute(args);
-            assertEquals(0, exitCode, "コマンド実行は正常終了 (0) するべき");
-            return baos.toString(StandardCharsets.UTF_8);
+            return new CommandResult(exitCode, baos.toString(StandardCharsets.UTF_8));
         } finally {
             System.setOut(originalOut);
             System.setErr(originalErr);
+            System.setIn(originalIn);
         }
+    }
+
+    // System.out と System.err の出力をキャプチャするヘルパーメソッド
+    private String runWithOutputCapture(String... args) {
+        CommandResult res = runWithInputAndOutputCapture(null, args);
+        assertEquals(0, res.exitCode(), "コマンド実行は正常終了 (0) するべき");
+        return res.output();
     }
 }

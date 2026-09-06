@@ -78,4 +78,20 @@ public class mv {
         }
         return results;
     }
+    public static Path generateUniquePath(Path path) {
+        if (!Files.exists(path)) return path;
+        String name = path.getFileName().toString();
+        int dot = name.lastIndexOf('.');
+        String base = dot > 0 ? name.substring(0, dot) : name;
+        String ext = dot > 0 ? name.substring(dot) : "";
+        Path parent = path.getParent();
+        int count = 1;
+        Path candidate;
+        do {
+            candidate = (parent == null) ? Path.of(base + " (" + count + ")" + ext)
+                                        : parent.resolve(base + " (" + count + ")" + ext);
+            count++;
+        } while (Files.exists(candidate));
+        return candidate;
+    }
 }

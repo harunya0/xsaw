@@ -4,6 +4,7 @@
 package cli;
 
 import java.io.IOException;
+import java.io.BufferedReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.Callable;
@@ -317,12 +318,37 @@ public class App implements Callable<Integer> {
                     sources.add(Path.of(sourceRaw.get(i)));
                 }
 
-                List<MoveResult> results;
-                if (isDirTarget) {
-                    results = mover.moveAll(sources, destination, options);
-                } else {
-                    results = List.of(mover.move(sources.get(0), destination, options));
+                List<MoveResult> results = new ArrayList<>();
+                BufferedReader reader = new BufferedReader(new java.io.InputStreamReader(System.in, java.nio.charset.StandardCharsets.UTF_8));
+                for (Path src : sources) {
+                    Path finalDest = isDirTarget ? destination.resolve(src.getFileName()) : destination;
+
+                    if (Files.exists(finalDest) && !force && !noClobber && !dryRun) {
+                        ConflictAction action = promptConflictAction(src, finalDest, reader); 
+                        switch (action) {
+                            case OVERWRITE -> {
+                                MoveOptions overwriteOpts = new MoveOptions(dryRun, true, false, verbose);
+                                results.add(mover.move(src, finalDest, overwriteOpts));
+                            }
+                            case RENAME -> {
+                                Path uniqueDest = mv.generateUniquePath(finalDest);
+                                MoveResult res = mover.move(src, uniqueDest, options);
+                                results.add(new MoveResult(res.source(), res.destination(), res.sizeBytes(), res.timestamp(), res.isDirectory(), MoveStatus.RENAME));
+                            }
+                            case SKIP -> {
+                                long size = Files.isDirectory(src) ? 0 : Files.size(src);
+                                results.add(new MoveResult(src, finalDest, size, java.time.Instant.now(), Files.isDirectory(src), MoveStatus.SKIPPED));
+                            }
+                            case CANCEL -> {
+                                System.err.println("Operation cancelled by user.");
+                                return 1;
+                            }
+                        }
+                    } else {
+                        results.add(mover.move(src, finalDest, options));
+                    }
                 }
+
                 for (MoveResult res : results) {
                     printResult(res, options.verbose());
                 }
@@ -355,6 +381,64 @@ public class App implements Callable<Integer> {
                         System.out.printf("[MOVED] %s%n", srcName);
                     }
                 }
+                case RENAME -> {
+                    if (verbose) {
+                        System.out.printf("[RENAMED] %s -> %s%n", result.source(), result.destination());
+                    } else {
+                        System.out.printf("[RENAMED] %s -> %s%n", srcName, result.destination().getFileName());
+                    }
+                }
+            }
+        }
+
+        private ConflictAction promptConflictAction(
+            Path src,
+            Path dest,
+            BufferedReader in
+        ) throws IOException {
+            while (true) {
+                System.out.println();
+                System.out.printf("Conflict detected: %s already exists.%n", dest.getFileName());
+                printFileInfo("Source:     ", src);
+                printFileInfo("Destination:", dest);
+                System.out.println();
+                System.out.println("Choose an action:");
+                System.out.println("[1] Overwrite");
+                System.out.printf("[2] Rename (auto: %s)%n", mv.generateUniquePath(dest).getFileName());
+                System.out.println("[3] Skip");
+                System.out.println("[4] Compare");
+                System.out.println("[5] Cancel");
+                System.out.print("> ");
+                System.out.flush();
+
+                String line = in.readLine();
+                if (line == null) {
+                    return ConflictAction.CANCEL;
+                }
+                line = line.trim();
+                switch (line) {
+                    case "1", "o", "overwrite" -> { return ConflictAction.OVERWRITE; }
+                    case "2", "r", "rename" -> { return ConflictAction.RENAME; }
+                    case "3", "s", "skip" -> { return ConflictAction.SKIP; }
+                    case "4", "c", "compare" -> {
+                        System.out.println("----------------------------------------");
+                        printFileInfo("Source:     ", src);
+                        printFileInfo("Destination:", dest);
+                        System.out.println("----------------------------------------");
+                    }
+                    case "5", "q", "cancel" -> { return ConflictAction.CANCEL; }
+                    default -> System.out.println("Invalid choice: '" + line + "'. Please enter 1, 2, 3, 4, or 5.");
+                }
+            }
+        }
+
+        private void printFileInfo(String label, Path path) {
+            try {
+                long size = Files.isDirectory(path) ? 0 : Files.size(path);
+                String time = Files.getLastModifiedTime(path).toInstant().toString().replace("T", " ").replace("Z", " ");
+                System.out.printf("%-12s %s (Size: %,d bytes, Last Modified: %s)%n", label, path.toAbsolutePath(), size, time);
+            } catch (IOException e) {
+                System.out.printf("%-12s %s (Error retrieving size: %s)%n", label, path.toAbsolutePath(), e.getMessage());
             }
         }
     }
