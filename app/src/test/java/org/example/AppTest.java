@@ -307,6 +307,29 @@ class AppTest {
         assertTrue(output.contains("Found 2 matches"));
     }
 
+    @Test
+    void testMvCommand() throws Exception {
+        Path src = Files.writeString(tempDir.resolve("cli_mv.txt"), "mv content");
+        Path dest = tempDir.resolve("cli_moved.txt");
+
+        String output = runWithOutputCapture("mv", src.toString(), dest.toString());
+        assertTrue(output.contains("Moved: cli_mv.txt"));
+        assertFalse(Files.exists(src));
+        assertTrue(Files.exists(dest));
+        assertEquals("mv content", Files.readString(dest));
+    }
+
+    @Test
+    void testMvCommandShortAlias() throws Exception {
+        Path src = Files.writeString(tempDir.resolve("alias_src.txt"), "alias content");
+        Path subDir = Files.createDirectory(tempDir.resolve("sub_alias"));
+
+        String output = runWithOutputCapture("m", src.toString(), subDir.toString());
+        assertTrue(output.contains("Moved: alias_src.txt"));
+        assertFalse(Files.exists(src));
+        assertTrue(Files.exists(subDir.resolve("alias_src.txt")));
+    }
+
     // System.out と System.err の出力をキャプチャするヘルパーメソッド
     private String runWithOutputCapture(String... args) {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();

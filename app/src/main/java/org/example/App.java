@@ -15,7 +15,7 @@ import picocli.CommandLine.Parameters;
 
 @Command(name = "xsaw", mixinStandardHelpOptions = true, version = "1.0.0",
         description = "Lists files in the current directory.",
-        subcommands = {App.DuCommand.class, App.FiCommand.class})
+        subcommands = {App.DuCommand.class, App.FiCommand.class, App.MvCommand.class})
 
 public class App implements Callable<Integer> {
     @Override
@@ -190,6 +190,30 @@ public class App implements Callable<Integer> {
                 return 0;
             } catch (IOException e) {
                 System.err.println("Error searching directory: " + e.getMessage());
+                return 1;
+            }
+        }
+    }
+
+    @Command (name = "mv", aliases = {"m"}, description = "Moves a file or directory to a new location.")
+    static class MvCommand implements Callable<Integer> {
+        @Parameters (index = "0", description = "The source file or directory to move.")
+        private Path source;
+
+        @Parameters (index = "1", description = "The target destination path.")
+        private Path destination;
+
+        @Override
+        public Integer call() {
+            try {
+                mv mover = new mv();
+                MoveResult result = mover.move(source, destination);
+                System.out.printf("Moved: %s%n -> %s%n",
+                result.source().getFileName(),
+                result.destination());
+                return 0;
+            } catch (IOException e) {
+                System.err.println("Error moving file/directory: " + e.getMessage());
                 return 1;
             }
         }
