@@ -24,6 +24,24 @@ public class App implements Callable<Integer> {
         return 0;
     }
 
+    private static java.util.Set<String> normalizeExts(java.util.List<String> exts) {
+        if (exts == null || exts.isEmpty()) return java.util.Set.of();
+        return exts.stream()
+            .filter(java.util.Objects::nonNull)
+            .map(s -> s.trim())
+            .filter(s -> !s.isEmpty())
+            .map(s -> s.startsWith(".") ? s.substring(1).toLowerCase() : s.toLowerCase())
+            .collect(java.util.stream.Collectors.toSet());
+    }
+
+    private static boolean hasPipedInput() {
+        try {
+            return System.in.available() > 0;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
     @Command (name = "du", aliases = {"d"}, description = "Displays the number of files, directories, and total size of a specified directory, along with statistics on file extensions.")
     static class DuCommand implements Callable<Integer> {
         @Parameters (index = "0", description = "The directory to list files from, or '-' for standard input.", defaultValue = "")
@@ -35,14 +53,18 @@ public class App implements Callable<Integer> {
         @Option (names = {"-l", "--list-only"}, description = "List only the file extensions without statistics.", defaultValue = "false")
         private boolean listOnly;
 
+        @Option (names = {"-e", "--ext"}, split = ",", description = "Filter by file extensions (comma-separated or multiple flags).")
+        private java.util.List<String> exts;
+
         @Override
         public Integer call() {
-            boolean isPiped = targetInput.isEmpty() && System.console() == null;
             boolean isExplicitStdin = "-".equals(targetInput);
+            boolean isPiped = (targetInput.isEmpty() || ".".equals(targetInput)) && System.console() == null && hasPipedInput();
 
             try {
                 du du = new du();
                 FileResult result;
+                var filterExts = normalizeExts(exts);
 
                 if (isPiped || isExplicitStdin) {
                     var paths = new java.util.ArrayList<Path>();
@@ -58,14 +80,14 @@ public class App implements Callable<Integer> {
                             }
                         }
                     }
-                    result = du.analyze(paths, Path.of("(standard input)"));
+                    result = du.analyze(paths, Path.of("(standard input)"), filterExts);
                 } else {
                     Path path = Path.of(targetInput.isEmpty() ? "." : targetInput).toAbsolutePath().normalize();
                     if (!Files.isDirectory(path)) {
                         System.err.println("Error: " + path + " is not a directory.");
                         return 1;
                     }
-                    result = du.analyze(path);
+                    result = du.analyze(path, filterExts);
                 }
 
                 System.out.printf("Directory: %s%n%n", result.rootDir());
@@ -137,8 +159,8 @@ public class App implements Callable<Integer> {
         @Option (names = {"-f", "--file-only"}, description = "Search for files only.", defaultValue = "false")
         private boolean fileOnly;
 
-        @Option (names = {"-e", "--ext"}, description = "Filter results by file extension (e.g., .txt).")
-        private String ext;
+        @Option (names = {"-e", "--ext"}, split = ",", description = "Filter results by file extensions (comma-separated or multiple flags).")
+        private java.util.List<String> exts;
 
         @Override 
         public Integer call() {
@@ -156,7 +178,7 @@ public class App implements Callable<Integer> {
 
             try {
                 fi finder = new fi();
-                fi.FindOptions options = new fi.FindOptions(caseSensitive, dirOnly, fileOnly, ext);
+                fi.FindOptions options = new fi.FindOptions(caseSensitive, dirOnly, fileOnly, normalizeExts(exts));
                 FindResult result = finder.find(root, query, options);
 
                 for (Path relativeMatch : result.relativeMatches()) {

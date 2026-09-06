@@ -15,22 +15,26 @@ public class fi {
         private final boolean caseSensitive;
         private final boolean dirOnly;
         private final boolean fileOnly;
-        private final String ext;
+        private final java.util.Set<String> exts;
 
-        public FindOptions (boolean caseSensitive, boolean dirOnly, boolean fileOnly, String ext) {
+        public FindOptions(boolean caseSensitive, boolean dirOnly, boolean fileOnly, java.util.Set<String> exts) {
             this.caseSensitive = caseSensitive;
             this.dirOnly = dirOnly;
             this.fileOnly = fileOnly;
-            this.ext = ext;
+            this.exts = exts == null ? java.util.Set.of() : exts;
+        }
+
+        public FindOptions(boolean caseSensitive, boolean dirOnly, boolean fileOnly) {
+            this(caseSensitive, dirOnly, fileOnly, java.util.Set.of());
         }
 
         public boolean caseSensitive() { return caseSensitive; }
         public boolean dirOnly() { return dirOnly; }
         public boolean fileOnly() { return fileOnly; }
-        public String ext() { return ext; }
+        public java.util.Set<String> exts() { return exts; }
     }
 
-    public FindResult find (Path root, String query, FindOptions options) throws IOException {
+    public FindResult find(Path root, String query, FindOptions options) throws IOException {
         long startTime = System.currentTimeMillis();
         ConcurrentLinkedQueue<Path> matchedPaths = new ConcurrentLinkedQueue<>();
 
@@ -55,7 +59,6 @@ public class fi {
         List<Path> matches = matchedPaths.stream().sorted().toList();
         return new FindResult(root, matches, elapsed);
     }
-    
 
     private void scanSubTree(
         Path dir,
@@ -99,10 +102,11 @@ public class fi {
         if (fileNamePath == null) return false;
         String fileName = fileNamePath.toString();
 
-        if (options.ext() != null && !options.ext().isBlank()) {
+        if (options.exts() != null && !options.exts().isEmpty()) {
             if (isDir) return false;
-            String cleanExt = options.ext().startsWith(".") ? options.ext().substring(1) : options.ext();
-            if (!fileName.toLowerCase().endsWith("." + cleanExt.toLowerCase())) {
+            int dot = fileName.lastIndexOf('.');
+            String fileExt = (dot > 0 && dot < fileName.length() - 1) ? fileName.substring(dot + 1).toLowerCase() : "";
+            if (!options.exts().contains(fileExt)) {
                 return false;
             }
         }
@@ -110,7 +114,7 @@ public class fi {
         if (query == null || query.isEmpty()) {
             return true;
         }
-        if(options.caseSensitive()) {
+        if (options.caseSensitive()) {
             return fileName.contains(query);
         } else {
             return fileName.toLowerCase().contains(query.toLowerCase());

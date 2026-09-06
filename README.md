@@ -56,6 +56,7 @@ required for filesystem analysis.
 
 * `-n, --topN <number>`: Number of top file extensions to display (default: `4`, set `0` to display all).
 * `-l, --list-only`: List file extensions in a 4-column compact grid without percentage statistics.
+* `-e, --ext <ext...>`: Filter analysis by specific file extensions (comma-separated like `java,txt` or repeated flags).
 
 #### Display custom number of extensions (`-n`)
 
@@ -125,13 +126,18 @@ Found 4 matches in 27 ms.
 * `-s, --case-sensitive`: Perform a case-sensitive search (default: case-insensitive).
 * `-d, --dir-only`: Search for directories only.
 * `-f, --file-only`: Search for files only.
-* `-e, --ext <ext>`: Filter results by file extension (e.g., `java` or `.txt`).
+* `-e, --ext <ext...>`: Filter results by file extensions (comma-separated like `java,txt` or repeated flags).
 
 #### Filter by file extension (`-e`)
 
 ```bash
 # Search for .java files containing "Result"
 xsaw f Result . -e java
+
+# Search for both .java and .kt files
+xsaw f Result . -e java,kt
+# Or using repeated flags
+xsaw f Result . -e java -e kt
 ```
 
 #### Search directories only (`-d`)

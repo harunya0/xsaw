@@ -19,7 +19,7 @@ class FiTest {
     @Test
     void testFindEmptyDirectory() throws IOException {
         fi finder = new fi();
-        fi.FindOptions options = new fi.FindOptions(false, false, false, null);
+        fi.FindOptions options = new fi.FindOptions(false, false, false);
         FindResult result = finder.find(tempDir, "test", options);
 
         assertEquals(tempDir, result.rootDir());
@@ -34,7 +34,7 @@ class FiTest {
         Files.createDirectory(tempDir.resolve("subDir"));
 
         fi finder = new fi();
-        fi.FindOptions options = new fi.FindOptions(false, false, false, null);
+        fi.FindOptions options = new fi.FindOptions(false, false, false);
         FindResult result = finder.find(tempDir, "", options);
 
         assertEquals(3, result.count(), "空クエリの場合は全ファイル・フォルダがマッチするべき");
@@ -47,7 +47,7 @@ class FiTest {
         Files.createDirectory(tempDir.resolve("target_folder"));
 
         fi finder = new fi();
-        fi.FindOptions options = new fi.FindOptions(false, false, false, null);
+        fi.FindOptions options = new fi.FindOptions(false, false, false);
         FindResult result = finder.find(tempDir, "target", options);
 
         assertEquals(2, result.count());
@@ -65,7 +65,7 @@ class FiTest {
         Files.createFile(tempDir.resolve("other_file.txt"));
 
         fi finder = new fi();
-        fi.FindOptions options = new fi.FindOptions(false, false, false, null);
+        fi.FindOptions options = new fi.FindOptions(false, false, false);
         FindResult result = finder.find(tempDir, "MIXEDCASE", options);
 
         assertEquals(1, result.count(), "デフォルトは大文字小文字を区別せず検索するべき");
@@ -78,12 +78,12 @@ class FiTest {
 
         fi finder = new fi();
         // caseSensitive = true で小文字クエリを投げる（不一致になるはず）
-        fi.FindOptions optMismatch = new fi.FindOptions(true, false, false, null);
+        fi.FindOptions optMismatch = new fi.FindOptions(true, false, false);
         FindResult resMismatch = finder.find(tempDir, "casetarget", optMismatch);
         assertEquals(0, resMismatch.count(), "caseSensitive 有効時は大文字小文字が異なれば不一致");
 
         // caseSensitive = true で大文字小文字完全一致クエリを投げる（一致するはず）
-        fi.FindOptions optMatch = new fi.FindOptions(true, false, false, null);
+        fi.FindOptions optMatch = new fi.FindOptions(true, false, false);
         FindResult resMatch = finder.find(tempDir, "CaseTarget", optMatch);
         assertEquals(1, resMatch.count(), "caseSensitive 有効時に完全一致ならヒットする");
         assertEquals("CaseTarget.txt", resMatch.matches().get(0).getFileName().toString());
@@ -96,7 +96,7 @@ class FiTest {
 
         fi finder = new fi();
         // dirOnly = true
-        fi.FindOptions options = new fi.FindOptions(false, true, false, null);
+        fi.FindOptions options = new fi.FindOptions(false, true, false);
         FindResult result = finder.find(tempDir, "my_name", options);
 
         assertEquals(1, result.count());
@@ -111,7 +111,7 @@ class FiTest {
 
         fi finder = new fi();
         // fileOnly = true
-        fi.FindOptions options = new fi.FindOptions(false, false, true, null);
+        fi.FindOptions options = new fi.FindOptions(false, false, true);
         FindResult result = finder.find(tempDir, "item", options);
 
         assertEquals(1, result.count());
@@ -128,25 +128,33 @@ class FiTest {
         fi finder = new fi();
 
         // 拡張子 "txt" (ドットなし)
-        fi.FindOptions opt1 = new fi.FindOptions(false, false, false, "txt");
+        fi.FindOptions opt1 = new fi.FindOptions(false, false, false, java.util.Set.of("txt"));
         FindResult res1 = finder.find(tempDir, "", opt1);
         assertEquals(2, res1.count(), "doc.txt と notes.TXT の2件がマッチするべき");
 
-        // 拡張子 ".png" (ドットあり)
-        fi.FindOptions opt2 = new fi.FindOptions(false, false, false, ".png");
+        // 拡張子 ".png" (正規化されて png になる)
+        fi.FindOptions opt2 = new fi.FindOptions(false, false, false, java.util.Set.of("png"));
         FindResult res2 = finder.find(tempDir, "", opt2);
         assertEquals(1, res2.count());
         assertEquals("image.png", res2.matches().get(0).getFileName().toString());
     }
 
     @Test
+    void testFindByMultipleExtensions() throws IOException {
+        Files.createFile(tempDir.resolve("app.java"));
+        Files.createFile(tempDir.resolve("notes.txt"));
+        Files.createFile(tempDir.resolve("photo.jpg"));
+
+        fi finder = new fi();
+        // 複数拡張子: java と txt を同時に指定
+        fi.FindOptions options = new fi.FindOptions(false, false, false, java.util.Set.of("java", "txt"));
+        FindResult result = finder.find(tempDir, "", options);
+
+        assertEquals(2, result.count(), "java と txt の2件がヒットするべき");
+    }
+
+    @Test
     void testFindNestedDirectoryTree() throws IOException {
-        // tempDir/
-        //   ├── a/
-        //   │   └── find_me.java
-        //   └── b/
-        //       └── sub/
-        //           └── find_me.txt
         Path dirA = Files.createDirectory(tempDir.resolve("a"));
         Path dirB = Files.createDirectory(tempDir.resolve("b"));
         Path subB = Files.createDirectory(dirB.resolve("sub"));
@@ -155,7 +163,7 @@ class FiTest {
         Files.createFile(subB.resolve("find_me.txt"));
 
         fi finder = new fi();
-        fi.FindOptions options = new fi.FindOptions(false, false, false, "java");
+        fi.FindOptions options = new fi.FindOptions(false, false, false, java.util.Set.of("java"));
         FindResult result = finder.find(tempDir, "find_me", options);
 
         assertEquals(1, result.count());

@@ -20,6 +20,10 @@ public class du {
     }
 
     public FileResult analyze(Path root) throws IOException {
+        return analyze(root, java.util.Set.of());
+    }
+
+    public FileResult analyze(Path root, java.util.Set<String> fileExt) throws IOException {
         LongAdder fileCount = new LongAdder();
         LongAdder dirCount = new LongAdder();
         LongAdder totalBytes = new LongAdder();
@@ -30,9 +34,9 @@ public class du {
                 for (Path entry : stream) {
                     if (Files.isDirectory(entry)) {
                         dirCount.increment();
-                        executor.submit(() -> scanSubTree(entry, fileCount, dirCount, totalBytes, extMap));
+                        executor.submit(() -> scanSubTree(entry, fileCount, dirCount, totalBytes, extMap, fileExt));
                     } else if (Files.isRegularFile(entry)) {
-                        recordFile(entry, Files.size(entry), fileCount, totalBytes, extMap);
+                        recordFile(entry, Files.size(entry), fileCount, totalBytes, extMap, fileExt);
                     }
                 }
             }
@@ -52,7 +56,8 @@ public class du {
         LongAdder fileCount,
         LongAdder dirCount,
         LongAdder totalBytes,
-        ConcurrentHashMap<String, ExtAccumulator> extMap
+        ConcurrentHashMap<String, ExtAccumulator> extMap,
+        java.util.Set<String> fileExt
     ) {
         try {
             Files.walkFileTree(dir, new SimpleFileVisitor<>() {
@@ -67,7 +72,7 @@ public class du {
                 @Override
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
                     if (Files.isRegularFile(file)) {
-                        recordFile(file, attrs.size(), fileCount, totalBytes, extMap);
+                        recordFile(file, attrs.size(), fileCount, totalBytes, extMap, fileExt);
                     }
                     return FileVisitResult.CONTINUE;
                 }
@@ -86,12 +91,16 @@ public class du {
         long size,
         LongAdder fileCount,
         LongAdder totalBytes,
-        ConcurrentHashMap<String, ExtAccumulator> extMap
+        ConcurrentHashMap<String, ExtAccumulator> extMap,
+        java.util.Set<String> fileExt
     ) {
+        String ext = getFileExtension(file);
+        if (fileExt != null && !fileExt.isEmpty() && !fileExt.contains(ext)) {
+            return;
+        }
+
         fileCount.increment();
         totalBytes.add(size);
-
-        String ext = getFileExtension(file);
         extMap.computeIfAbsent(ext, k -> new ExtAccumulator()).count.increment();
         extMap.computeIfAbsent(ext, k -> new ExtAccumulator()).bytes.add(size);
     }
@@ -108,6 +117,10 @@ public class du {
     }
 
     public FileResult analyze(java.util.List<Path> paths, Path baseDir) throws IOException {
+        return analyze(paths, baseDir, java.util.Set.of());
+    }
+
+    public FileResult analyze(java.util.List<Path> paths, Path baseDir, java.util.Set<String> fileExt) throws IOException {
         LongAdder fileCount = new LongAdder();
         LongAdder dirCount = new LongAdder();
         LongAdder totalBytes = new LongAdder();
@@ -115,7 +128,7 @@ public class du {
 
         for (Path path : paths) {
             if (Files.isRegularFile(path)) {
-                recordFile(path, Files.size(path), fileCount, totalBytes, extMap);
+                recordFile(path, Files.size(path), fileCount, totalBytes, extMap, fileExt);
             } else if (Files.isDirectory(path)) {
                 dirCount.increment();
             }

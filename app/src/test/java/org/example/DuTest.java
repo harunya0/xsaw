@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -108,5 +109,21 @@ class DuTest {
         assertEquals(5 + "class Test {}".length(), result.totalBytes());
         assertTrue(result.extensions().containsKey("txt"));
         assertTrue(result.extensions().containsKey("java"));
+    }
+
+    @Test
+    void testAnalyzeWithExtensionFilter() throws IOException {
+        Files.writeString(tempDir.resolve("file1.txt"), "hello");
+        Files.writeString(tempDir.resolve("file2.java"), "class Test {}");
+        Files.writeString(tempDir.resolve("file3.jpg"), "binary data");
+
+        du analyzer = new du();
+        // txt と java のみを指定して集計
+        FileResult result = analyzer.analyze(tempDir, java.util.Set.of("txt", "java"));
+
+        assertEquals(2, result.fileCount(), "txt と java の2ファイルのみが集計される");
+        assertTrue(result.extensions().containsKey("txt"));
+        assertTrue(result.extensions().containsKey("java"));
+        assertFalse(result.extensions().containsKey("jpg"), "jpg は集計から除外される");
     }
 }

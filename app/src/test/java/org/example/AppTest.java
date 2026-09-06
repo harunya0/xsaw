@@ -268,6 +268,45 @@ class AppTest {
         assertFalse(stdout.contains("Found"), "stdout にはサマリ (Found... ms) が含まれないべき (stderr に分離)");
     }
 
+    @Test
+    void testDuWithMultipleExtensionsCommaSeparated() throws Exception {
+        Files.createFile(tempDir.resolve("code.java"));
+        Files.createFile(tempDir.resolve("doc.txt"));
+        Files.createFile(tempDir.resolve("image.png"));
+
+        String output = runWithOutputCapture("du", "-e", "java,txt", tempDir.toString());
+        assertTrue(output.contains("Files:                  2"));
+        assertTrue(output.contains("java"));
+        assertTrue(output.contains("txt"));
+        assertFalse(output.contains("png"));
+    }
+
+    @Test
+    void testDuWithMultipleExtensionsRepeatedFlags() throws Exception {
+        Files.createFile(tempDir.resolve("code.java"));
+        Files.createFile(tempDir.resolve("doc.txt"));
+        Files.createFile(tempDir.resolve("image.png"));
+
+        String output = runWithOutputCapture("du", "-e", "java", "-e", "txt", tempDir.toString());
+        assertTrue(output.contains("Files:                  2"));
+        assertTrue(output.contains("java"));
+        assertTrue(output.contains("txt"));
+        assertFalse(output.contains("png"));
+    }
+
+    @Test
+    void testFiWithMultipleExtensions() throws Exception {
+        Files.createFile(tempDir.resolve("app.java"));
+        Files.createFile(tempDir.resolve("app.kt"));
+        Files.createFile(tempDir.resolve("app.py"));
+
+        String output = runWithOutputCapture("fi", "-e", "java,kt", "app", tempDir.toString());
+        assertTrue(output.contains("app.java"));
+        assertTrue(output.contains("app.kt"));
+        assertFalse(output.contains("app.py"));
+        assertTrue(output.contains("Found 2 matches"));
+    }
+
     // System.out と System.err の出力をキャプチャするヘルパーメソッド
     private String runWithOutputCapture(String... args) {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
