@@ -1,4 +1,4 @@
-package org.example;
+package mv;
 
 public enum MoveStatus {
     MOVED,       // Normal move completed

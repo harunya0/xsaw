@@ -26,7 +26,7 @@ tasks.withType<JavaCompile>().configureEach {
 }
 
 application {
-    mainClass = "org.example.App"
+    mainClass = "cli.App"
     applicationDefaultJvmArgs = listOf(
         "--enable-preview",
         "--enable-native-access=ALL-UNNAMED"
@@ -47,7 +47,7 @@ tasks.named<Test>("test") {
 
 tasks.named<Jar>("jar") {
     manifest {
-        attributes("Main-Class" to "org.example.App")
+        attributes("Main-Class" to "cli.App")
     }
 }
 
@@ -73,7 +73,7 @@ tasks.register<Exec>("packageExe") {
         "--name", "xsaw",
         "--input", layout.buildDirectory.dir("install/app/lib").get().asFile.absolutePath,
         "--main-jar", "app.jar",
-        "--main-class", "org.example.App",
+        "--main-class", "cli.App",
         "--java-options", "--enable-preview",
         "--java-options", "--enable-native-access=ALL-UNNAMED",
         "--win-console",
@@ -104,7 +104,7 @@ tasks.register<Exec>("packageNative") {
         "--name", "xsaw",
         "--input", layout.buildDirectory.dir("install/app/lib").get().asFile.absolutePath,
         "--main-jar", "app.jar",
-        "--main-class", "org.example.App",
+        "--main-class", "cli.App",
         "--java-options", "--enable-preview",
         "--java-options", "--enable-native-access=ALL-UNNAMED",
         "--dest", outputDir.absolutePath

@@ -1,4 +1,4 @@
-package org.example;
+package fi;
 
 import java.nio.file.Path;
 import java.util.List;

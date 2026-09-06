@@ -1,4 +1,4 @@
-package org.example;
+package du;
 
 import java.nio.file.Path;
 import java.util.Map;

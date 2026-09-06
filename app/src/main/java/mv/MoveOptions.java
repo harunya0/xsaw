@@ -1,4 +1,4 @@
-package org.example;
+package mv;
 
 public record MoveOptions(
     boolean dryRun,
