@@ -313,7 +313,7 @@ class AppTest {
         Path dest = tempDir.resolve("cli_moved.txt");
 
         String output = runWithOutputCapture("mv", src.toString(), dest.toString());
-        assertTrue(output.contains("Moved: cli_mv.txt"));
+        assertTrue(output.contains("[MOVED] cli_mv.txt"));
         assertFalse(Files.exists(src));
         assertTrue(Files.exists(dest));
         assertEquals("mv content", Files.readString(dest));
@@ -325,7 +325,7 @@ class AppTest {
         Path subDir = Files.createDirectory(tempDir.resolve("sub_alias"));
 
         String output = runWithOutputCapture("m", src.toString(), subDir.toString());
-        assertTrue(output.contains("Moved: alias_src.txt"));
+        assertTrue(output.contains("[MOVED] alias_src.txt"));
         assertFalse(Files.exists(src));
         assertTrue(Files.exists(subDir.resolve("alias_src.txt")));
     }
@@ -393,6 +393,147 @@ class AppTest {
         Files.createFile(tempDir.resolve("elapsed_test.txt"));
         String output = runWithOutputCapture("du", tempDir.toString());
         assertTrue(output.contains("Elapsed:"), "du の出力に Elapsed: が含まれるべき");
+    }
+
+    @Test
+    void testMvQuestionMarkShowsHelp() {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        PrintStream origOut = System.out;
+        try {
+            System.setOut(new PrintStream(baos, true, StandardCharsets.UTF_8));
+            int exitCode = new CommandLine(new App()).execute("mv", "?");
+            assertEquals(0, exitCode, "mv ? はヘルプを表示して正常終了 (0) するべき");
+            assertTrue(baos.toString(StandardCharsets.UTF_8).contains("Usage:"));
+        } finally {
+            System.setOut(origOut);
+        }
+    }
+
+    @Test
+    void testMvMissingDestinationReturnsError() {
+        ByteArrayOutputStream errBaos = new ByteArrayOutputStream();
+        PrintStream origErr = System.err;
+        try {
+            System.setErr(new PrintStream(errBaos, true, StandardCharsets.UTF_8));
+            int exitCode = new CommandLine(new App()).execute("mv", "single_arg.txt");
+            assertEquals(1, exitCode, "移動先省略時は終了コード 1 で終了するべき");
+            assertTrue(errBaos.toString(StandardCharsets.UTF_8).contains("Error: Source and destination paths are required."));
+        } finally {
+            System.setErr(origErr);
+        }
+    }
+
+    @Test
+    void testMvDryRunOption() throws Exception {
+        Path src = Files.writeString(tempDir.resolve("dry_src.txt"), "dry content");
+        Path dest = tempDir.resolve("dry_dest.txt");
+
+        String output = runWithOutputCapture("mv", "-d", src.toString(), dest.toString());
+        assertTrue(output.contains("[DRY RUN]"));
+        assertTrue(Files.exists(src), "dry-run では移動元ファイルが残るべき");
+        assertFalse(Files.exists(dest), "dry-run では移動先ファイルが作られないべき");
+    }
+
+    @Test
+    void testMvForceOption() throws Exception {
+        Path src = Files.writeString(tempDir.resolve("force_src.txt"), "new content");
+        Path dest = Files.writeString(tempDir.resolve("force_dest.txt"), "old content");
+
+        String output = runWithOutputCapture("mv", "-f", src.toString(), dest.toString());
+        assertTrue(output.contains("[OVERWRITTEN]"));
+        assertFalse(Files.exists(src));
+        assertTrue(Files.exists(dest));
+        assertEquals("new content", Files.readString(dest), "-f で上書きされるべき");
+    }
+
+    @Test
+    void testMvNoClobberOption() throws Exception {
+        Path src = Files.writeString(tempDir.resolve("no_clobber_src.txt"), "new content");
+        Path dest = Files.writeString(tempDir.resolve("no_clobber_dest.txt"), "existing content");
+
+        String output = runWithOutputCapture("mv", "-n", src.toString(), dest.toString());
+        assertTrue(output.contains("[SKIPPED]"));
+        assertTrue(Files.exists(src), "-n でスキップされた場合移動元は残るべき");
+        assertEquals("existing content", Files.readString(dest), "既存ファイルの内容は維持されるべき");
+    }
+
+    @Test
+    void testMvMultipleSourcesToDirectory() throws Exception {
+        Path f1 = Files.writeString(tempDir.resolve("multi1.txt"), "content 1");
+        Path f2 = Files.writeString(tempDir.resolve("multi2.txt"), "content 2");
+        Path targetDir = Files.createDirectory(tempDir.resolve("multi_dest"));
+
+        String output = runWithOutputCapture("mv", f1.toString(), f2.toString(), targetDir.toString());
+        assertTrue(output.contains("[MOVED] multi1.txt"));
+        assertTrue(output.contains("[MOVED] multi2.txt"));
+        assertFalse(Files.exists(f1));
+        assertFalse(Files.exists(f2));
+        assertTrue(Files.exists(targetDir.resolve("multi1.txt")));
+        assertTrue(Files.exists(targetDir.resolve("multi2.txt")));
+    }
+
+    @Test
+    void testMvToNonExistentDirectoryWithTrailingSlash() throws Exception {
+        Path f1 = Files.writeString(tempDir.resolve("slash1.txt"), "hello");
+        String targetDirPath = tempDir.resolve("new_sub_dir").toString() + "/";
+
+        String output = runWithOutputCapture("mv", f1.toString(), targetDirPath);
+        assertTrue(output.contains("[MOVED] slash1.txt"));
+        assertTrue(Files.exists(tempDir.resolve("new_sub_dir").resolve("slash1.txt")));
+    }
+
+    @Test
+    void testMvMultipleSourcesToNonExistentDirectoryWithTrailingSlash() throws Exception {
+        Path f1 = Files.writeString(tempDir.resolve("slash_multi1.txt"), "hello 1");
+        Path f2 = Files.writeString(tempDir.resolve("slash_multi2.txt"), "hello 2");
+        String targetDirPath = tempDir.resolve("new_sub_dir2").toString() + "\\";
+
+        String output = runWithOutputCapture("mv", f1.toString(), f2.toString(), targetDirPath);
+        assertTrue(output.contains("[MOVED] slash_multi1.txt"));
+        assertTrue(output.contains("[MOVED] slash_multi2.txt"));
+        assertTrue(Files.exists(tempDir.resolve("new_sub_dir2").resolve("slash_multi1.txt")));
+        assertTrue(Files.exists(tempDir.resolve("new_sub_dir2").resolve("slash_multi2.txt")));
+    }
+
+    @Test
+    void testMvMultipleSourcesToNonDirectoryReturnsError() throws Exception {
+        Path f1 = Files.writeString(tempDir.resolve("err1.txt"), "1");
+        Path f2 = Files.writeString(tempDir.resolve("err2.txt"), "2");
+        Path targetNonDir = tempDir.resolve("non_existent_file");
+
+        ByteArrayOutputStream errBaos = new ByteArrayOutputStream();
+        PrintStream origErr = System.err;
+        try {
+            System.setErr(new PrintStream(errBaos, true, StandardCharsets.UTF_8));
+            int exitCode = new CommandLine(new App()).execute("mv", f1.toString(), f2.toString(), targetNonDir.toString());
+            assertEquals(1, exitCode);
+            assertTrue(errBaos.toString(StandardCharsets.UTF_8).contains("When moving multiple sources, the target must be a directory."));
+        } finally {
+            System.setErr(origErr);
+        }
+    }
+
+    @Test
+    void testMvVerboseOption() throws Exception {
+        Path src = Files.writeString(tempDir.resolve("v_src.txt"), "verbose");
+        Path dest = tempDir.resolve("v_dest.txt");
+
+        String output = runWithOutputCapture("mv", "-v", src.toString(), dest.toString());
+        assertTrue(output.contains("[MOVED] " + src.toAbsolutePath() + " -> " + dest.toAbsolutePath()));
+    }
+
+    @Test
+    void testMvConflictingForceAndNoClobber() {
+        ByteArrayOutputStream errBaos = new ByteArrayOutputStream();
+        PrintStream origErr = System.err;
+        try {
+            System.setErr(new PrintStream(errBaos, true, StandardCharsets.UTF_8));
+            int exitCode = new CommandLine(new App()).execute("mv", "-f", "-n", "a.txt", "b.txt");
+            assertEquals(1, exitCode, "--force と --no-clobber の同時指定はエラー");
+            assertTrue(errBaos.toString(StandardCharsets.UTF_8).contains("Cannot specify both --force and --no-clobber"));
+        } finally {
+            System.setErr(origErr);
+        }
     }
 
     // System.out と System.err の出力をキャプチャするヘルパーメソッド

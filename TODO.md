@@ -17,7 +17,7 @@
 | | オプション (`-s`, `-d`, `-f`, `-e`, `-r` 正規表現) | ◯ | ◯ | **完了** |
 | | パイプライン連携 (`f \| du`) | ◯ | ◯ | **完了** (stdout/stderr分離) |
 | **Packaging** | Windows / Linux ネイティブ化 (`packageNative`) | ◯ | ◯ | **完了** (`dist/xsaw`) |
-| **File Operations** | ファイル移動コマンド (`xsaw mv`, `m`) | ◯ | ◯ | **完了** (親ディレクトリ生成・既存Dir内展開対応) |
+| **File Operations** | ファイル移動コマンド (`xsaw mv`, `m`) | ◯ | ◯ | **完了** (`-d`, `-f`, `-n`, `-v`, 複数指定, 末尾`/`対応) |
 | **Operation History** | SQLite による操作履歴ロギング | ◯ | ❌ | 🚨 **未実装** (DB基盤が必要) |
 | **Conflict Handling** | 移動先の競合検知 & 対話型解決 (1〜5) | ◯ | ❌ | 🚨 **未実装** (UI/CLIプロンプト) |
 | **Restore** | 操作ロールバック (`xsaw undo`) | ◯ | ❌ | 🚨 **未実装** (履歴からの逆移動) |
@@ -128,12 +128,12 @@ Phase 4: 機能強化 & 将来構想
 - [x] `-s, -d, -f, -e`: 検索オプション完備
 - [x] `xsaw f | xsaw du`: パイプライン連携
 - [x] `packageNative`: Windows (.exe) & Linux (ELF) ネイティブビルド
-- [x] ユニットテスト 38 件全件合格
+- [x] ユニットテスト 73 件全件合格
 
-### ファイル操作 & 履歴管理（未着手）
+### ファイル操作 & 履歴管理
+- [x] `xsaw mv` コマンドの実装（`-d`, `-f`, `-n`, `-v`, 複数指定, 末尾`/`対応）
 - [ ] `sqlite-jdbc` の Gradle 依存関係追加
 - [ ] 操作ログ用 DB スキーマ（テーブル設計）
-- [ ] `xsaw mv` コマンドの実装
 - [ ] ファイル移動の自動 SQLite ロギング
 - [ ] 対話型コンフリクト解決（Overwrite / Rename / Skip / Compare / Cancel）
 - [ ] `xsaw history` コマンド（操作履歴の一覧表示）

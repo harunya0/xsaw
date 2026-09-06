@@ -8,9 +8,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 public class mv {
     public MoveResult move(Path source, Path target) throws IOException {
+        return move(source, target, MoveOptions.DEFAULT);
+    }
+
+    public MoveResult move(Path source, Path target, MoveOptions options) throws IOException {
         Path src = source.toAbsolutePath();
         Path dest = target.toAbsolutePath();
 
@@ -18,30 +24,58 @@ public class mv {
             throw new FileNotFoundException("Source file does not exist: " + src);
         }
 
+        String targetStr = target.toString();
+        boolean isExpectedDirTarget = targetStr.endsWith("/") || targetStr.endsWith("\\") || Files.isDirectory(dest);
         Path finalDest = dest;
-        if (Files.isDirectory(dest)) {
+        if (isExpectedDirTarget) {
             finalDest = dest.resolve(src.getFileName());
         }
 
         Path parent = finalDest.getParent();
-        if (parent != null && !Files.exists(parent)) {
+        if (parent != null && !Files.exists(parent) && !options.dryRun()) {
             Files.createDirectories(parent);
         }
 
-        if (Files.exists(finalDest)) {
-            throw new FileAlreadyExistsException("Target file already exists: " + finalDest);
-        }
-
+        boolean distExists = Files.exists(finalDest);
         boolean isDir = Files.isDirectory(src);
         long size = isDir ? 0 : Files.size(src);
         Instant now = Instant.now();
 
-        try {
-            Files.move(src, finalDest, StandardCopyOption.ATOMIC_MOVE);
-        } catch (AtomicMoveNotSupportedException e) {
-            Files.move(src, finalDest);
+        if (distExists && options.noClobber()) {
+            return new MoveResult(src, finalDest, size, now, isDir, MoveStatus.SKIPPED);
         }
 
-        return new MoveResult(src, finalDest, size, now, isDir);
+        if (distExists && !options.force()) {
+            throw new FileAlreadyExistsException("Destination already exists: " + finalDest);
+        }
+
+        if (options.dryRun()) {
+            return new MoveResult(src, finalDest, size, now, isDir, MoveStatus.DRY_RUN);
+        }
+
+        MoveStatus status = distExists ? MoveStatus.OVERWRITTEN : MoveStatus.MOVED;
+        try {
+            if (options.force()) {
+                Files.move(src, finalDest, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } else {
+                Files.move(src, finalDest);
+            }
+        } catch (AtomicMoveNotSupportedException e) {
+            if (options.force()) {
+                Files.move(src, finalDest, StandardCopyOption.REPLACE_EXISTING);
+            } else {
+                Files.move(src, finalDest);
+            }
+        }
+
+        return new MoveResult(src, finalDest, size, now, isDir, status);
+    }
+
+    public List<MoveResult> moveAll(List<Path> sources, Path targetDir, MoveOptions options) throws IOException {
+        List<MoveResult> results = new ArrayList<>();
+        for (Path src : sources) {
+            results.add(move(src, targetDir.resolve(src.getFileName()), options));
+        }
+        return results;
     }
 }

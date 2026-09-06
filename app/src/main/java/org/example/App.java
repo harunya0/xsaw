@@ -7,6 +7,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.Callable;
+import java.util.List;
+import java.util.ArrayList;
 
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
@@ -222,24 +224,94 @@ public class App implements Callable<Integer> {
 
     @Command (name = "mv", aliases = {"m"}, mixinStandardHelpOptions = true, description = "Moves a file or directory to a new location.")
     static class MvCommand implements Callable<Integer> {
-        @Parameters (index = "0", description = "The source file or directory to move.")
-        private Path source;
+        @Parameters (description = "The source file or directory to move.", arity = "0..*")
+        private java.util.List<String> sourceRaw;
 
-        @Parameters (index = "1", description = "The target destination path.")
-        private Path destination;
+        @Option (names = {"-d", "--dry-run"}, description = "Perform a trial run without making any changes.", defaultValue = "false")
+        private boolean dryRun;
+
+        @Option (names = {"-f", "--force"}, description = "Force overwrite of existing files.", defaultValue = "false")
+        private boolean force;
+
+        @Option (names = {"-n", "--no-clobber"}, description = "Do not overwrite existing files.", defaultValue = "false")
+        private boolean noClobber;
+
+        @Option (names = {"-v", "--verbose"}, description = "Enable verbose output.", defaultValue = "false")
+        private boolean verbose;
 
         @Override
         public Integer call() {
+            if (sourceRaw == null || sourceRaw.isEmpty() || "?".equals(sourceRaw.get(0)) || "/?".equals(sourceRaw.get(0)) || "help".equalsIgnoreCase(sourceRaw.get(0))) {
+                CommandLine.usage(this, System.out);
+                return 0;
+            }
+
+            if (sourceRaw.size() < 2) {
+                System.err.println("Error: Source and destination paths are required.");
+                return 1;
+            }
+
+            if (force && noClobber) {
+                System.err.println("Error: Cannot specify both --force and --no-clobber options.");
+                return 1;
+            }
+
+            MoveOptions options = new MoveOptions(dryRun, force, noClobber, verbose);
+
             try {
                 mv mover = new mv();
-                MoveResult result = mover.move(source, destination);
-                System.out.printf("Moved: %s%n -> %s%n",
-                result.source().getFileName(),
-                result.destination());
+                String targetPathStr = sourceRaw.get(sourceRaw.size() - 1);
+                Path destination = Path.of(targetPathStr);
+
+                boolean isDirTarget = targetPathStr.endsWith("/") || targetPathStr.endsWith("\\") || Files.isDirectory(destination);
+                if (sourceRaw.size() > 2 && !isDirTarget) {
+                    System.err.println("Error: When moving multiple sources, the target must be a directory.");
+                    return 1;
+                }
+
+                List<Path> sources = new ArrayList<>();
+                for (int i = 0; i < sourceRaw.size() -1; i++) {
+                    sources.add(Path.of(sourceRaw.get(i)));
+                }
+
+                List<MoveResult> results;
+                if (isDirTarget) {
+                    results = mover.moveAll(sources, destination, options);
+                } else {
+                    results = List.of(mover.move(sources.get(0), destination, options));
+                }
+                for (MoveResult res : results) {
+                    printResult(res, options.verbose());
+                }
                 return 0;
             } catch (IOException e) {
                 System.err.println("Error moving file/directory: " + e.getMessage());
                 return 1;
+            } catch (java.nio.file.InvalidPathException e) {
+                System.err.println("Error: Invalid path: " + e.getInput());
+                return 1;
+            }
+        }
+
+        private void printResult(MoveResult result, boolean verbose) {
+            String srcName = result.source().getFileName().toString();
+            switch (result.status()) {
+                case DRY_RUN -> System.out.printf("[DRY RUN] %s -> %s%n", result.source(), result.destination());
+                case SKIPPED -> System.out.printf("[SKIPPED] %s already exists at %s%n", srcName, result.destination());
+                case OVERWRITTEN -> {
+                    if (verbose) {
+                        System.out.printf("[OVERWRITTEN] %s -> %s%n", result.source(), result.destination());
+                    } else {
+                        System.out.printf("[OVERWRITTEN] %s%n", srcName);
+                    }
+                }
+                case MOVED -> {
+                    if (verbose) {
+                        System.out.printf("[MOVED] %s -> %s%n", result.source(), result.destination());
+                    } else {
+                        System.out.printf("[MOVED] %s%n", srcName);
+                    }
+                }
             }
         }
     }

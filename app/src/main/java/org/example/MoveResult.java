@@ -8,6 +8,7 @@ public record MoveResult(
     Path destination,
     long sizeBytes,
     Instant timestamp,
-    boolean isDirectory
+    boolean isDirectory,
+    MoveStatus status
 ) {
 }

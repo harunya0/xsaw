@@ -212,6 +212,27 @@ Move files from the command line:
 
 ```bash
 xsaw mv ./Downloads/foo.zip ./Archive/
+# Or using the short 1-letter alias
+xsaw m ./Downloads/foo.zip ./Archive/
+```
+
+### Options
+
+* `-d, --dry-run`: Perform a trial run without making any changes.
+* `-f, --force`: Force overwrite of existing files.
+* `-n, --no-clobber`: Do not overwrite existing files (skip them).
+* `-v, --verbose`: Enable verbose output.
+
+#### Move multiple files to a directory
+
+```bash
+xsaw mv a.txt b.txt c.txt ./Archive/
+```
+
+#### Dry-run simulation (`-d`)
+
+```bash
+xsaw mv foo.zip ./Archive/ -d
 ```
 
 File operations are recorded automatically.
