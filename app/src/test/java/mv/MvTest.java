@@ -6,13 +6,26 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class MvTest {
     @TempDir 
     Path tempDir;
+
+    @BeforeEach
+    void setUpXsawHome() {
+        System.setProperty("xsaw.home", tempDir.resolve(".xsaw").toString());
+    }
+
+    @AfterEach
+    void tearDownXsawHome() {
+        System.clearProperty("xsaw.home");
+    }
 
     @Test
     void testMoveFile() throws IOException {
@@ -110,5 +123,23 @@ class MvTest {
         Files.writeString(unique1, "second");
         Path unique2 = mv.generateUniquePath(f);
         assertEquals(tempDir.resolve("sample (2).txt"), unique2);
+    }
+
+    @Test
+    void testMoveWithForceOverwritePreservesOldInTrash() throws IOException {
+        Path src = Files.writeString(tempDir.resolve("new.txt"), "new content");
+        Path dest = Files.writeString(tempDir.resolve("target.txt"), "precious old content");
+
+        history.TrashVault vault = new history.TrashVault(tempDir.resolve("custom_trash"));
+        mv mover = new mv(vault);
+        MoveOptions options = new MoveOptions(false, true, false, false);
+        MoveResult result = mover.move(src, dest, options);
+
+        assertEquals(MoveStatus.OVERWRITTEN, result.status());
+        assertNotNull(result.trashUuid());
+        Path inTrash = vault.getTrashDir().resolve(result.trashUuid());
+        assertTrue(Files.exists(inTrash));
+        assertEquals("precious old content", Files.readString(inTrash));
+        assertEquals("new content", Files.readString(dest));
     }
 }

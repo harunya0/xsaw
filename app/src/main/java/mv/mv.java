@@ -1,5 +1,6 @@
 package mv;
 
+import history.TrashVault;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.file.AtomicMoveNotSupportedException;
@@ -10,8 +11,19 @@ import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 public class mv {
+    private final TrashVault vault;
+
+    public mv() {
+        this(new TrashVault());
+    }
+
+    public mv(TrashVault vault) {
+        this.vault = vault;
+    }
+
     public MoveResult move(Path source, Path target) throws IOException {
         return move(source, target, MoveOptions.DEFAULT);
     }
@@ -54,6 +66,16 @@ public class mv {
         }
 
         MoveStatus status = distExists ? MoveStatus.OVERWRITTEN : MoveStatus.MOVED;
+        String trashUuid = null;
+
+        if (distExists && options.force() && !options.dryRun()) {
+            if (vault != null) {
+                UUID uuid = UUID.randomUUID();
+                vault.moveToTrash(finalDest, uuid);
+                trashUuid = uuid.toString();
+            }
+        }
+
         try {
             if (options.force()) {
                 Files.move(src, finalDest, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
@@ -68,7 +90,7 @@ public class mv {
             }
         }
 
-        return new MoveResult(src, finalDest, size, now, isDir, status);
+        return new MoveResult(src, finalDest, size, now, isDir, status, trashUuid);
     }
 
     public List<MoveResult> moveAll(List<Path> sources, Path targetDir, MoveOptions options) throws IOException {

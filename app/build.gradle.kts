@@ -12,6 +12,7 @@ dependencies {
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     implementation(libs.guava)
+    implementation("org.xerial:sqlite-jdbc:3.47.2.0")
 }
 
 java {
@@ -42,7 +43,7 @@ tasks.named<JavaExec>("run") {
 
 tasks.named<Test>("test") {
     useJUnitPlatform()
-    jvmArgs("--enable-preview")
+    jvmArgs("--enable-preview", "--enable-native-access=ALL-UNNAMED")
 }
 
 tasks.named<Jar>("jar") {

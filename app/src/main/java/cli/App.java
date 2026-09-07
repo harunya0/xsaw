@@ -15,6 +15,8 @@ import du.*;
 import fi.*;
 import mv.*;
 import gr.*;
+import rm.*;
+import history.*;
 
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
@@ -23,7 +25,7 @@ import picocli.CommandLine.Parameters;
 
 @Command(name = "xsaw", mixinStandardHelpOptions = true, version = "1.0.0",
         description = "Lists files in the current directory.",
-        subcommands = {App.DuCommand.class, App.FiCommand.class, App.MvCommand.class, App.GrepCommand.class})
+        subcommands = {App.DuCommand.class, App.FiCommand.class, App.MvCommand.class, App.GrepCommand.class, App.RmCommand.class, App.LogCommand.class, App.PurgeCommand.class})
 
 public class App implements Callable<Integer> {
     @Override
@@ -352,6 +354,32 @@ public class App implements Callable<Integer> {
                 for (MoveResult res : results) {
                     printResult(res, options.verbose());
                 }
+
+                if (!options.dryRun()) {
+                    List<OperationRecord> opRecords = new ArrayList<>();
+                    String batchId = java.util.UUID.randomUUID().toString();
+                    for (MoveResult res : results) {
+                        if (res.status() == MoveStatus.MOVED || res.status() == MoveStatus.OVERWRITTEN || res.status() == MoveStatus.RENAME) {
+                            opRecords.add(OperationRecord.create(
+                                batchId,
+                                OperationType.MOVE,
+                                res.source().toString(),
+                                res.destination().toString(),
+                                res.trashUuid(),
+                                res.sizeBytes(),
+                                res.isDirectory()
+                            ));
+                        }
+                    }
+                    if (!opRecords.isEmpty()) {
+                        try (HistoryDb db = new HistoryDb()) {
+                            db.recordBatch(opRecords);
+                        } catch (java.sql.SQLException e) {
+                            System.err.println("Warning: Failed to record operation history: " + e.getMessage());
+                        }
+                    }
+                }
+
                 return 0;
             } catch (IOException e) {
                 System.err.println("Error moving file/directory: " + e.getMessage());
@@ -537,6 +565,276 @@ public class App implements Callable<Integer> {
                 System.err.println("Error searching directory: "+ e.getMessage());
                 return 1;
             }
+        }
+    }
+
+    @Command(name = "rm", aliases = {"r", "del"}, mixinStandardHelpOptions = true,
+             description = "Safely remove files or directories to trash (undoable).")
+    static class RmCommand implements Callable<Integer> {
+
+        @Parameters(arity = "0..*", description = "Target files or directories to remove")
+        private List<String> targets;
+
+        @Option(names = {"-r", "-R", "--recursive"}, description = "Remove directories and their contents recursively")
+        private boolean recursive;
+
+        @Option(names = {"-f", "--force"}, description = "Ignore non-existent files without error, or bypass confirmation on --purge")
+        private boolean force;
+
+        @Option(names = {"-v", "--verbose"}, description = "Verbose output displaying trash UUIDs and full paths")
+        private boolean verbose;
+
+        @Option(names = {"--purge", "--empty-trash"}, description = "Permanently empty items from trash vault (irreversible)")
+        private boolean purge;
+
+        @Option(names = {"--days"}, description = "Only purge trash items older than specified number of days (used with --purge)")
+        private Integer days;
+
+        @Override
+        public Integer call() {
+            if (purge) {
+                return PurgeCommand.executePurge(force, days);
+            }
+
+            if (targets == null || targets.isEmpty()) {
+                System.err.println("Error: No target specified to remove.");
+                return 1;
+            }
+
+            if (targets.size() == 1) {
+                String single = targets.get(0);
+                if ("?".equals(single) || "/?".equals(single) || "-?".equals(single) || "help".equalsIgnoreCase(single)) {
+                    CommandLine.usage(this, System.out);
+                    return 0;
+                }
+            }
+
+            List<Path> paths = new ArrayList<>();
+            for (String t : targets) {
+                Path p = Path.of(t);
+                if (!Files.exists(p)) {
+                    if (force) {
+                        continue;
+                    } else {
+                        System.err.println("Error: File or directory not found: " + t);
+                        return 1;
+                    }
+                }
+                paths.add(p);
+            }
+
+            if (paths.isEmpty()) {
+                return 0;
+            }
+
+            try (HistoryDb db = new HistoryDb()) {
+                TrashVault vault = new TrashVault();
+                rm remover = new rm(vault, db);
+
+                List<RemoveResult> results = remover.removeAll(paths, recursive);
+                for (RemoveResult res : results) {
+                    if (verbose) {
+                        System.out.printf("[REMOVED] %s (UUID: %s, %s bytes)%n",
+                            res.path(), res.trashUuid(), res.isDirectory() ? "dir" : String.format("%,d", res.sizeByte()));
+                    } else {
+                        System.out.printf("[REMOVED] %s%n", res.path().getFileName());
+                    }
+                }
+                return 0;
+            } catch (java.nio.file.NoSuchFileException e) {
+                if (!force) {
+                    System.err.println("Error: File or directory not found: " + e.getMessage());
+                    return 1;
+                }
+                return 0;
+            } catch (IOException e) {
+                System.err.println("Error removing target: " + e.getMessage());
+                return 1;
+            } catch (java.sql.SQLException e) {
+                System.err.println("Database error recording removal: " + e.getMessage());
+                return 1;
+            }
+        }
+    }
+
+    @Command(name = "purge", aliases = {"clean", "empty-trash"}, mixinStandardHelpOptions = true,
+             description = "Permanently delete items from the trash vault (irreversible).")
+    static class PurgeCommand implements Callable<Integer> {
+
+        @Option(names = {"-y", "--yes"}, description = "Bypass confirmation prompt")
+        private boolean yes;
+
+        @Option(names = {"-f", "--force"}, description = "Bypass confirmation prompt (alias for -y)")
+        private boolean force;
+
+        @Option(names = {"--days"}, description = "Only purge trash items older than specified number of days")
+        private Integer days;
+
+        @Parameters(arity = "0..*", description = "Optional arguments or '?' for help", hidden = true)
+        private List<String> targets;
+
+        @Override
+        public Integer call() {
+            if (targets != null && targets.size() == 1) {
+                String single = targets.get(0);
+                if ("?".equals(single) || "/?".equals(single) || "-?".equals(single) || "help".equalsIgnoreCase(single)) {
+                    CommandLine.usage(this, System.out);
+                    return 0;
+                }
+            }
+            return executePurge(yes || force, days);
+        }
+
+        public static int executePurge(boolean forceOrYes, Integer days) {
+            if (!forceOrYes) {
+                System.out.println("WARNING: This operation permanently deletes items from the trash vault and cannot be undone!");
+                System.out.print("Are you sure you want to proceed? [y/N]: ");
+                System.out.flush();
+                try {
+                    BufferedReader reader = new BufferedReader(new java.io.InputStreamReader(System.in, java.nio.charset.StandardCharsets.UTF_8));
+                    String answer = reader.readLine();
+                    if (answer == null || (!answer.trim().equalsIgnoreCase("y") && !answer.trim().equalsIgnoreCase("yes"))) {
+                        System.out.println("Purge cancelled.");
+                        return 0;
+                    }
+                } catch (IOException e) {
+                    System.err.println("Error reading confirmation: " + e.getMessage());
+                    return 1;
+                }
+            }
+
+            try (HistoryDb db = new HistoryDb()) {
+                TrashVault vault = new TrashVault();
+                int count;
+                if (days != null && days > 0) {
+                    count = vault.purgeExpired(java.time.Duration.ofDays(days), db);
+                    if (count == 0) {
+                        System.out.printf("No trash items older than %d day(s) found.%n", days);
+                    } else {
+                        System.out.printf("Permanently purged %d item(s) older than %d day(s) from trash.%n", count, days);
+                    }
+                } else {
+                    count = vault.purgeAll(db);
+                    if (count == 0) {
+                        System.out.println("Trash is already empty. 0 items purged.");
+                    } else {
+                        System.out.printf("Permanently purged %d item(s) from trash.%n", count);
+                    }
+                }
+                return 0;
+            } catch (Exception e) {
+                System.err.println("Error purging trash: " + e.getMessage());
+                return 1;
+            }
+        }
+    }
+
+    @Command(name = "log", aliases = {"l", "history"}, mixinStandardHelpOptions = true,
+             description = "Show recent operation history or export to JSON.")
+    static class LogCommand implements Callable<Integer> {
+
+        @Option(names = {"-n", "--limit"}, defaultValue = "10", description = "Number of recent operations to show (default: 10)")
+        private int limit;
+
+        @Option(names = {"-o", "--output"}, description = "Export history to a JSON file (e.g. -o log -> log.json)")
+        private String output;
+
+        @Option(names = {"-v", "--verbose"}, description = "Display full paths and extra details")
+        private boolean verbose;
+
+        @Parameters(arity = "0..1", description = "Optional argument or '?' for help")
+        private String query;
+
+        @Override
+        public Integer call() {
+            if ("?".equals(query) || "/?".equals(query) || "help".equalsIgnoreCase(query)) {
+                CommandLine.usage(this, System.out);
+                return 0;
+            }
+
+            try (HistoryDb db = new HistoryDb()) {
+                List<OperationRecord> records = db.findRecent(limit);
+                if (records.isEmpty()) {
+                    System.out.println("No operation history found.");
+                    return 0;
+                }
+
+                if (output != null && !output.isBlank()) {
+                    String fileName = output.endsWith(".json") ? output : output + ".json";
+                    Path outPath = Path.of(fileName);
+                    String json = formatAsJson(records);
+                    Files.writeString(outPath, json, java.nio.charset.StandardCharsets.UTF_8);
+                    System.out.printf("Exported %d records to %s%n", records.size(), outPath.toAbsolutePath());
+                    return 0;
+                }
+
+                printTable(records, verbose);
+                return 0;
+            } catch (Exception e) {
+                System.err.println("Error reading operation history: " + e.getMessage());
+                return 1;
+            }
+        }
+
+        private void printTable(List<OperationRecord> records, boolean verbose) {
+            System.out.printf("%-5s %-20s %-8s %-10s %s%n", "ID", "TIMESTAMP", "TYPE", "STATUS", "DETAILS");
+            System.out.println("-".repeat(80));
+            for (OperationRecord rec : records) {
+                String rawTime = rec.timestamp().toString().replace("T", " ");
+                String timeStr = rawTime.length() >= 19 ? rawTime.substring(0, 19) : rawTime;
+                String details;
+                if (rec.operationType() == OperationType.REMOVE) {
+                    String pathStr = verbose ? rec.sourcePath() : Path.of(rec.sourcePath()).getFileName().toString();
+                    details = pathStr + (rec.trashUuid() != null ? " (UUID: " + rec.trashUuid() + ")" : "");
+                } else {
+                    String srcStr = verbose ? rec.sourcePath() : Path.of(rec.sourcePath()).getFileName().toString();
+                    String destStr = rec.destinationPath() != null
+                        ? (verbose ? rec.destinationPath() : Path.of(rec.destinationPath()).getFileName().toString())
+                        : "-";
+                    details = srcStr + " -> " + destStr + (rec.trashUuid() != null ? " [OVERWRITTEN]" : "");
+                }
+                System.out.printf("%-5d %-20s %-8s %-10s %s%n",
+                    rec.id(), timeStr, rec.operationType(), rec.status(), details);
+            }
+            System.out.println("-".repeat(80));
+            System.out.printf("Showing %d recent operations.%n", records.size());
+        }
+
+        private String formatAsJson(List<OperationRecord> records) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("[\n");
+            for (int i = 0; i < records.size(); i++) {
+                OperationRecord r = records.get(i);
+                sb.append("  {\n");
+                sb.append("    \"id\": ").append(r.id()).append(",\n");
+                sb.append("    \"batchId\": ").append(escapeJson(r.batchID())).append(",\n");
+                sb.append("    \"operationType\": ").append(escapeJson(r.operationType().name())).append(",\n");
+                sb.append("    \"sourcePath\": ").append(escapeJson(r.sourcePath())).append(",\n");
+                sb.append("    \"destinationPath\": ").append(r.destinationPath() != null ? escapeJson(r.destinationPath()) : "null").append(",\n");
+                sb.append("    \"trashUuid\": ").append(r.trashUuid() != null ? escapeJson(r.trashUuid()) : "null").append(",\n");
+                sb.append("    \"fileSize\": ").append(r.fileSize()).append(",\n");
+                sb.append("    \"isDirectory\": ").append(r.isDirectory()).append(",\n");
+                sb.append("    \"status\": ").append(escapeJson(r.status().name())).append(",\n");
+                sb.append("    \"timestamp\": ").append(escapeJson(r.timestamp().toString())).append("\n");
+                sb.append("  }");
+                if (i < records.size() - 1) {
+                    sb.append(",");
+                }
+                sb.append("\n");
+            }
+            sb.append("]\n");
+            return sb.toString();
+        }
+
+        private static String escapeJson(String s) {
+            if (s == null) return "null";
+            return "\"" + s.replace("\\", "\\\\")
+                           .replace("\"", "\\\"")
+                           .replace("\b", "\\b")
+                           .replace("\f", "\\f")
+                           .replace("\n", "\\n")
+                           .replace("\r", "\\r")
+                           .replace("\t", "\\t") + "\"";
         }
     }
 

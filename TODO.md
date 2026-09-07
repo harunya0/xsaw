@@ -18,9 +18,9 @@
 | | パイプライン連携 (`f \| du`) | ◯ | ◯ | **完了** (stdout/stderr分離) |
 | **Packaging** | Windows / Linux ネイティブ化 (`packageNative`) | ◯ | ◯ | **完了** (`dist/xsaw`) |
 | **File Operations** | ファイル移動コマンド (`xsaw mv`, `m`) | ◯ | ◯ | **完了** (`-d`, `-f`, `-n`, `-v`, 複数指定, 末尾`/`対応) |
-| **Content Search** | 仮想スレッド並行テキスト検索 (`grep`, `g`, `gr`) | ◯ | ◯ | **完了** (`-s`, `-r`, `-e`, `-l/-f`, `-n`, パイプ対応) |
-| **Operation History** | SQLite による操作履歴ロギング | ◯ | ❌ | 🚨 **未実装** (DB基盤が必要) |
+| **Operation History** | SQLite による操作履歴ロギング | ◯ | ◯ | **完了** (DB基盤・UUID金庫・rmログ・mvログ完了) |
 | **Conflict Handling** | 移動先の競合検知 & 対話型解決 (1〜5) | ◯ | ◯ | **完了** (対話プロンプト & 113 tests PASS) |
+| **Safe Delete** | 安全なゴミ箱削除 (`xsaw rm`, `r`) | ◯ | ◯ | **完了** (UUID隔離 & 30日パージ) |
 | **Restore** | 操作ロールバック (`xsaw undo`) | ◯ | ❌ | 🚨 **未実装** (履歴からの逆移動) |
 | **Planned Features** | 重複ファイル検知、ハッシュ計算など | ◯ (予定) | ❌ | 🔮 **将来構想** |
 
@@ -135,14 +135,16 @@ Phase 4: 機能強化 & 将来構想
 - [x] `-s, -d, -f, -e`: 検索オプション完備
 - [x] `xsaw f | xsaw du`: パイプライン連携
 - [x] `packageNative`: Windows (.exe) & Linux (ELF) ネイティブビルド
-- [x] ユニットテスト 113 件全件合格
+- [x] ユニットテスト 144 件全件合格
 
 ### ファイル操作 & 履歴管理
 - [x] `xsaw mv` コマンドの実装（`-d`, `-f`, `-n`, `-v`, 複数指定, 末尾`/`対応）
 - [x] 対話型コンフリクト解決（Overwrite / Rename / Skip / Compare / Cancel）
-- [ ] `sqlite-jdbc` の Gradle 依存関係追加
-- [ ] 操作ログ用 DB スキーマ（テーブル設計）
-- [ ] ファイル移動の自動 SQLite ロギング
-- [ ] `xsaw history` コマンド（操作履歴の一覧表示）
-- [ ] `xsaw undo <id>` コマンド（ファイル移動の取り消し・復元）
-- [ ] 単体テスト（SQLite モック / @TempDir を使った移動・undo の検証）
+- [x] `sqlite-jdbc` の Gradle 依存関係追加
+- [x] 操作ログ用 DB スキーマ（テーブル設計 & WALモード: `HistoryDb`）
+- [x] 隔離退避金庫 & 30日パージ（`TrashVault`）
+- [x] `xsaw rm` / `r`: 安全なファイル・ディレクトリ削除（UUIDゴミ箱退避 & DBロギング）
+- [x] ファイル移動 (`mv`) の自動 SQLite ロギング & 上書き時バックアップ
+- [x] `xsaw log` / `l` / `history` コマンド（操作履歴の一覧表示 & `-o log` での JSON 出力）
+- [ ] `xsaw undo <id>` コマンド（ファイル移動・削除の取り消し・復元）
+- [x] `xsaw purge` / `clean` / `empty-trash` コマンド（ゴミ箱の不可逆完全削除 & 警告プロンプト）

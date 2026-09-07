@@ -19,6 +19,16 @@ class AppTest {
     @TempDir
     Path tempDir;
 
+    @org.junit.jupiter.api.BeforeEach
+    void setUpXsawHome() {
+        System.setProperty("xsaw.home", tempDir.resolve(".xsaw").toString());
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void tearDownXsawHome() {
+        System.clearProperty("xsaw.home");
+    }
+
     @Test
     void testHelpReturnsSuccess() {
         int exitCode = new CommandLine(new App()).execute("--help");
@@ -856,6 +866,223 @@ class AppTest {
         assertEquals("new-a", Files.readString(subDir.resolve("a (1).txt")));
         assertTrue(Files.exists(subDir.resolve("b.txt")));
         assertEquals("new-b", Files.readString(subDir.resolve("b.txt")));
+    }
+
+    @Test
+    void testCliRmBasic() throws Exception {
+        Path file = Files.writeString(tempDir.resolve("sample.txt"), "hello rm");
+        CommandResult res = runWithInputAndOutputCapture(null, "rm", file.toString());
+        assertEquals(0, res.exitCode());
+        assertTrue(res.output().contains("[REMOVED] sample.txt"));
+        assertFalse(Files.exists(file));
+    }
+
+    @Test
+    void testCliRmAliasR() throws Exception {
+        Path file = Files.writeString(tempDir.resolve("sample.txt"), "hello alias r");
+        CommandResult res = runWithInputAndOutputCapture(null, "r", file.toString());
+        assertEquals(0, res.exitCode());
+        assertTrue(res.output().contains("[REMOVED] sample.txt"));
+        assertFalse(Files.exists(file));
+    }
+
+    @Test
+    void testCliRmRecursiveDirectory() throws Exception {
+        Path dir = Files.createDirectory(tempDir.resolve("folder"));
+        Files.writeString(dir.resolve("inner.txt"), "inside");
+
+        CommandResult res = runWithInputAndOutputCapture(null, "rm", "-r", dir.toString());
+        assertEquals(0, res.exitCode());
+        assertTrue(res.output().contains("[REMOVED] folder"));
+        assertFalse(Files.exists(dir));
+    }
+
+    @Test
+    void testCliRmDirectoryWithoutRecursiveFails() throws Exception {
+        Path dir = Files.createDirectory(tempDir.resolve("folder"));
+        CommandResult res = runWithInputAndOutputCapture(null, "rm", dir.toString());
+        assertEquals(1, res.exitCode());
+        assertTrue(res.output().contains("Cannot remove directory without -r"));
+        assertTrue(Files.exists(dir));
+    }
+
+    @Test
+    void testCliRmForceIgnoresNonExistent() throws Exception {
+        Path missing = tempDir.resolve("not_found.txt");
+        CommandResult res = runWithInputAndOutputCapture(null, "rm", "-f", missing.toString());
+        assertEquals(0, res.exitCode());
+    }
+
+    @Test
+    void testCliRmVerbose() throws Exception {
+        Path file = Files.writeString(tempDir.resolve("verbose.txt"), "hello verbose");
+        CommandResult res = runWithInputAndOutputCapture(null, "rm", "-v", file.toString());
+        assertEquals(0, res.exitCode());
+        assertTrue(res.output().contains("[REMOVED]"));
+        assertTrue(res.output().contains("UUID:"));
+        assertTrue(res.output().contains("bytes"));
+        assertFalse(Files.exists(file));
+    }
+
+    @Test
+    void testCliMvRecordsHistoryAndBacksUpOverwrite() throws Exception {
+        Path src = Files.writeString(tempDir.resolve("new.txt"), "new content");
+        Path dest = Files.writeString(tempDir.resolve("target.txt"), "old content to save");
+
+        CommandResult res = runWithInputAndOutputCapture(null, "mv", "-f", src.toString(), dest.toString());
+        assertEquals(0, res.exitCode());
+        assertTrue(res.output().contains("[OVERWRITTEN]"));
+
+        // HistoryDb に記録されているか検証
+        try (history.HistoryDb db = new history.HistoryDb(tempDir.resolve(".xsaw/history.db"))) {
+            var recent = db.findRecent(1);
+            assertEquals(1, recent.size());
+            var record = recent.get(0);
+            assertEquals(history.OperationType.MOVE, record.operationType());
+            assertNotNull(record.trashUuid());
+
+            // ゴミ箱に上書き前のファイルが保存されているか検証
+            Path inTrash = tempDir.resolve(".xsaw/trash").resolve(record.trashUuid());
+            assertTrue(Files.exists(inTrash));
+            assertEquals("old content to save", Files.readString(inTrash));
+        }
+    }
+
+    @Test
+    void testCliRmQuestionMarkShowsHelp() throws Exception {
+        CommandResult res = runWithInputAndOutputCapture(null, "rm", "?");
+        assertEquals(0, res.exitCode());
+        assertTrue(res.output().contains("Usage:"));
+        assertTrue(res.output().contains("rm"));
+    }
+
+    @Test
+    void testCliLogEmpty() throws Exception {
+        CommandResult res = runWithInputAndOutputCapture(null, "l");
+        assertEquals(0, res.exitCode());
+        assertTrue(res.output().contains("No operation history found."));
+    }
+
+    @Test
+    void testCliLogTable() throws Exception {
+        Path file = Files.writeString(tempDir.resolve("to_delete.txt"), "delete me");
+        runWithInputAndOutputCapture(null, "rm", file.toString());
+
+        CommandResult res = runWithInputAndOutputCapture(null, "log", "-n", "10");
+        assertEquals(0, res.exitCode());
+        assertTrue(res.output().contains("ID"));
+        assertTrue(res.output().contains("TIMESTAMP"));
+        assertTrue(res.output().contains("REMOVE"));
+        assertTrue(res.output().contains("to_delete.txt"));
+        assertTrue(res.output().contains("Showing 1 recent operations."));
+    }
+
+    @Test
+    void testCliLogLimitN() throws Exception {
+        for (int i = 1; i <= 3; i++) {
+            Path f = Files.writeString(tempDir.resolve("f" + i + ".txt"), "data" + i);
+            runWithInputAndOutputCapture(null, "rm", f.toString());
+        }
+
+        CommandResult res = runWithInputAndOutputCapture(null, "l", "-n", "2");
+        assertEquals(0, res.exitCode());
+        assertTrue(res.output().contains("Showing 2 recent operations."));
+    }
+
+    @Test
+    void testCliLogExportJson() throws Exception {
+        Path file = Files.writeString(tempDir.resolve("json_test.txt"), "json content");
+        runWithInputAndOutputCapture(null, "rm", file.toString());
+
+        Path outTarget = tempDir.resolve("log");
+        CommandResult res = runWithInputAndOutputCapture(null, "l", "-n", "10", "-o", outTarget.toString());
+        assertEquals(0, res.exitCode());
+        assertTrue(res.output().contains("Exported 1 records to"));
+
+        Path expectedJson = tempDir.resolve("log.json");
+        assertTrue(Files.exists(expectedJson));
+        String json = Files.readString(expectedJson);
+        assertTrue(json.contains("\"operationType\": \"REMOVE\""));
+        assertTrue(json.contains("\"sourcePath\""));
+        assertTrue(json.contains("json_test.txt"));
+    }
+
+    @Test
+    void testCliLogQuestionMarkShowsHelp() throws Exception {
+        CommandResult res = runWithInputAndOutputCapture(null, "l", "?");
+        assertEquals(0, res.exitCode());
+        assertTrue(res.output().contains("Usage:"));
+        assertTrue(res.output().contains("log"));
+    }
+
+    @Test
+    void testCliPurgePromptYes() throws Exception {
+        Path file = Files.writeString(tempDir.resolve("to_purge.txt"), "content");
+        runWithInputAndOutputCapture(null, "rm", file.toString());
+
+        CommandResult res = runWithInputAndOutputCapture("y\n", "purge");
+        assertEquals(0, res.exitCode());
+        assertTrue(res.output().contains("WARNING:"));
+        assertTrue(res.output().contains("Permanently purged 1 item(s) from trash."));
+
+        // ゴミ箱が空になっていること
+        Path trashDir = tempDir.resolve(".xsaw/trash");
+        try (var stream = Files.list(trashDir)) {
+            assertEquals(0, stream.count());
+        }
+    }
+
+    @Test
+    void testCliPurgePromptNo() throws Exception {
+        Path file = Files.writeString(tempDir.resolve("keep_in_trash.txt"), "content");
+        runWithInputAndOutputCapture(null, "rm", file.toString());
+
+        CommandResult res = runWithInputAndOutputCapture("n\n", "purge");
+        assertEquals(0, res.exitCode());
+        assertTrue(res.output().contains("WARNING:"));
+        assertTrue(res.output().contains("Purge cancelled."));
+
+        // ゴミ箱にまだ残っていること
+        Path trashDir = tempDir.resolve(".xsaw/trash");
+        try (var stream = Files.list(trashDir)) {
+            assertEquals(1, stream.count());
+        }
+    }
+
+    @Test
+    void testCliPurgeForce() throws Exception {
+        Path file = Files.writeString(tempDir.resolve("force_purge.txt"), "content");
+        runWithInputAndOutputCapture(null, "rm", file.toString());
+
+        CommandResult res = runWithInputAndOutputCapture(null, "purge", "-f");
+        assertEquals(0, res.exitCode());
+        assertFalse(res.output().contains("WARNING:"));
+        assertTrue(res.output().contains("Permanently purged 1 item(s) from trash."));
+    }
+
+    @Test
+    void testCliPurgeEmptyTrash() throws Exception {
+        CommandResult res = runWithInputAndOutputCapture(null, "purge", "-y");
+        assertEquals(0, res.exitCode());
+        assertTrue(res.output().contains("Trash is already empty. 0 items purged."));
+    }
+
+    @Test
+    void testCliRmWithPurgeFlag() throws Exception {
+        Path file = Files.writeString(tempDir.resolve("rm_purge.txt"), "content");
+        runWithInputAndOutputCapture(null, "rm", file.toString());
+
+        CommandResult res = runWithInputAndOutputCapture(null, "rm", "--purge", "-f");
+        assertEquals(0, res.exitCode());
+        assertTrue(res.output().contains("Permanently purged 1 item(s) from trash."));
+    }
+
+    @Test
+    void testCliPurgeHelp() throws Exception {
+        CommandResult res = runWithInputAndOutputCapture(null, "purge", "?");
+        assertEquals(0, res.exitCode());
+        assertTrue(res.output().contains("Usage:"));
+        assertTrue(res.output().contains("purge"));
     }
 
     // コマンド実行結果を保持するレコード
