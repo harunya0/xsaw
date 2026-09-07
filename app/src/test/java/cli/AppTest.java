@@ -1085,6 +1085,68 @@ class AppTest {
         assertTrue(res.output().contains("purge"));
     }
 
+    @Test
+    void testCliUndoRemove() throws Exception {
+        Path file = Files.writeString(tempDir.resolve("undo_target.txt"), "hello undo cli");
+        runWithInputAndOutputCapture(null, "rm", file.toString());
+        assertFalse(Files.exists(file));
+
+        // xsaw u で直前の削除を取り消し
+        CommandResult res = runWithInputAndOutputCapture(null, "u");
+        assertEquals(0, res.exitCode());
+        assertTrue(res.output().contains("Successfully undone 1 operation(s)."));
+        assertTrue(Files.exists(file));
+        assertEquals("hello undo cli", Files.readString(file));
+    }
+
+    @Test
+    void testCliUndoMove() throws Exception {
+        Path src = Files.writeString(tempDir.resolve("undo_mv_src.txt"), "move data");
+        Path dest = tempDir.resolve("undo_mv_dest.txt");
+        runWithInputAndOutputCapture(null, "mv", src.toString(), dest.toString());
+        assertTrue(Files.exists(dest));
+        assertFalse(Files.exists(src));
+
+        // xsaw undo で移動を取り消し
+        CommandResult res = runWithInputAndOutputCapture(null, "undo");
+        assertEquals(0, res.exitCode());
+        assertTrue(res.output().contains("Successfully undone 1 operation(s)."));
+        assertTrue(Files.exists(src));
+        assertFalse(Files.exists(dest));
+    }
+
+    @Test
+    void testCliRedo() throws Exception {
+        Path file = Files.writeString(tempDir.resolve("redo_cli.txt"), "content");
+        runWithInputAndOutputCapture(null, "rm", file.toString());
+        assertFalse(Files.exists(file));
+
+        // undo -> 復元
+        runWithInputAndOutputCapture(null, "undo");
+        assertTrue(Files.exists(file));
+
+        // redo -> 再度削除
+        CommandResult res = runWithInputAndOutputCapture(null, "redo");
+        assertEquals(0, res.exitCode());
+        assertTrue(res.output().contains("Successfully redone 1 operation(s)."));
+        assertFalse(Files.exists(file));
+    }
+
+    @Test
+    void testCliUndoWithNoActive() throws Exception {
+        CommandResult res = runWithInputAndOutputCapture(null, "undo");
+        assertEquals(0, res.exitCode());
+        assertTrue(res.output().contains("No active operation to undo."));
+    }
+
+    @Test
+    void testCliUndoHelp() throws Exception {
+        CommandResult res = runWithInputAndOutputCapture(null, "undo", "?");
+        assertEquals(0, res.exitCode());
+        assertTrue(res.output().contains("Usage:"));
+        assertTrue(res.output().contains("undo"));
+    }
+
     // コマンド実行結果を保持するレコード
     private record CommandResult(int exitCode, String output) {}
 

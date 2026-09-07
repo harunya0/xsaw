@@ -120,6 +120,10 @@ public class HistoryDb implements AutoCloseable {
     }
 
     public synchronized Optional<String> findLatestBatchId() throws SQLException {
+        return findLatestActiveBatchId();
+    }
+
+    public synchronized Optional<String> findLatestActiveBatchId() throws SQLException {
         String sql = "SELECT batch_id FROM operations WHERE status = 'ACTIVE' ORDER BY id DESC LIMIT 1";
         try (Statement stmt = getConnection().createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
@@ -130,10 +134,70 @@ public class HistoryDb implements AutoCloseable {
         }
     }
 
+    public synchronized Optional<String> findLatestRestoredBatchId() throws SQLException {
+        String sql = "SELECT batch_id FROM operations WHERE status = 'RESTORED' ORDER BY id DESC LIMIT 1";
+        try (Statement stmt = getConnection().createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            if (rs.next()) {
+                return Optional.of(rs.getString("batch_id"));
+            }
+            return Optional.empty();
+        }
+    }
+
+    public synchronized Optional<OperationRecord> findById(long id) throws SQLException {
+        String sql = "SELECT * FROM operations WHERE id = ?";
+        try (PreparedStatement pstmt = getConnection().prepareStatement(sql)) {
+            pstmt.setLong(1, id);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    return Optional.of(mapRow(rs));
+                }
+                return Optional.empty();
+            }
+        }
+    }
+
     public synchronized List<OperationRecord> findByBatchId(String batchId) throws SQLException {
-        String sql = "SELECT * FROM operations WHERE batch_id = ? ORDER BY id ASC";
+        return findByBatchId(batchId, false);
+    }
+
+    public synchronized List<OperationRecord> findByBatchId(String batchId, boolean reverse) throws SQLException {
+        String sql = "SELECT * FROM operations WHERE batch_id = ? ORDER BY id " + (reverse ? "DESC" : "ASC");
         try (PreparedStatement pstmt = getConnection().prepareStatement(sql)) {
             pstmt.setString(1, batchId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                List<OperationRecord> list = new ArrayList<>();
+                while (rs.next()) {
+                    list.add(mapRow(rs));
+                }
+                return list;
+            }
+        }
+    }
+
+    public synchronized List<OperationRecord> findByIdentifier(String identifier) throws SQLException {
+        Long idVal = null;
+        try {
+            idVal = Long.parseLong(identifier);
+        } catch (NumberFormatException ignored) {}
+
+        String sql;
+        if (idVal != null) {
+            sql = "SELECT * FROM operations WHERE id = ? OR batch_id = ? OR trash_uuid = ? ORDER BY id DESC";
+        } else {
+            sql = "SELECT * FROM operations WHERE batch_id = ? OR trash_uuid = ? ORDER BY id DESC";
+        }
+
+        try (PreparedStatement pstmt = getConnection().prepareStatement(sql)) {
+            if (idVal != null) {
+                pstmt.setLong(1, idVal);
+                pstmt.setString(2, identifier);
+                pstmt.setString(3, identifier);
+            } else {
+                pstmt.setString(1, identifier);
+                pstmt.setString(2, identifier);
+            }
             try (ResultSet rs = pstmt.executeQuery()) {
                 List<OperationRecord> list = new ArrayList<>();
                 while (rs.next()) {
@@ -163,6 +227,15 @@ public class HistoryDb implements AutoCloseable {
         try (PreparedStatement pstmt = getConnection().prepareStatement(sql)) {
             pstmt.setString(1, status.name());
             pstmt.setString(2, batchId);
+            pstmt.executeUpdate();
+        }
+    }
+
+    public synchronized void updateRecordStatus(long id, OperationStatus status) throws SQLException {
+        String sql = "UPDATE operations SET status = ? WHERE id = ?";
+        try (PreparedStatement pstmt = getConnection().prepareStatement(sql)) {
+            pstmt.setString(1, status.name());
+            pstmt.setLong(2, id);
             pstmt.executeUpdate();
         }
     }

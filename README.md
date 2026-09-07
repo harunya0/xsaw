@@ -1,4 +1,3 @@
-# this project is under development.
 # xsaw
 
 A cross-platform CLI file manager and directory analyzer written in Java.
@@ -8,18 +7,17 @@ files and directories on Windows and Linux.
 
 ## Features
 
-- Fast parallel file and directory search (`fi`, alias `f`)
-- Directory analysis and size distribution (`du`, alias `d`)
-- File and directory statistics
-- File classification by extension
-- Parallel filesystem traversal using Virtual Threads
-- File moving
-- Operation history
-- SQLite-based operation log
-- Move history
-- Conflict detection
-- Interactive conflict resolution
-- File operation restoration
+- **Fast Parallel File Search** (`fi`, alias `f`): Regex, extension filter, case-sensitivity, file/dir filtering.
+- **Directory Analysis & Size Breakdown** (`du`, alias `d`): Top-N rankings, compact 4-column extension grid, extension filtering.
+- **Unix-style Pipeline Integration** (`f | du`): Pipe search results directly into directory analysis.
+- **Fast Content Search** (`gr`, alias `g`): Regex, line numbering, inverted match, count only.
+- **Safe File Move** (`mv`, alias `m`): Interactive conflict resolution (Overwrite, Rename, Skip, Compare, Cancel), batch support, dry-run.
+- **Safe File Removal** (`rm`, alias `r`): Moves targets to an isolated trash vault (`~/.xsaw/trash`) with 30-day auto-purge.
+- **Trash Purge** (`purge`, alias `clean`): Irreversible permanent deletion with interactive confirmation (`[y/N]`) and `--days` filter.
+- **Operation History & Export** (`log`, alias `l`): Inspect past operations in a table or export to JSON (`-o log`).
+- **Operation Rollback & Redo** (`undo`, alias `u` / `redo`, alias `re`): Restore deleted or moved files with overwrite protection.
+- **SQLite Operation Logging**: Stored in `~/.xsaw/history.db` with WAL mode for speed and durability.
+- **Zero-Dependency Native Binaries**: Packaged for Windows (.exe) and Linux via GraalVM/jlink (`dist/xsaw`).
 
 ## Directory Analysis
 
@@ -252,61 +250,133 @@ Previous operation found:
 
 xsaw can use this information when performing subsequent operations.
 
-## Operation History
+## Safe Delete (`rm`, alias `r`)
 
-All file operations are stored in SQLite.
-
-An operation records information such as:
-
-```text
-Operation
-Timestamp
-Source path
-Destination path
-File size
-Hash
-Status
-```
-
-This allows xsaw to inspect previous operations and use them for
-restoration and future file management.
-
-## Conflict Handling
-
-xsaw does not silently overwrite existing files.
-
-If a destination already contains a file with the same name,
-xsaw displays a warning and lets the user choose how to proceed.
-
-```text
-Conflict detected.
-
-Source:
-  ./Downloads/foo.zip
-
-Destination:
-  ./Archive/foo.zip
-
-Choose an action:
-
-[1] Overwrite
-[2] Rename
-[3] Skip
-[4] Compare
-[5] Cancel
-```
-
-## Restore
-
-Because file operations are recorded, xsaw can restore previous
-operations when possible.
+Safely remove files or directories by isolating them into the trash vault (`~/.xsaw/trash/<UUID>`):
 
 ```bash
-xsaw undo <operation-id>
+xsaw rm foo.txt
+# Or using the short alias
+xsaw r foo.txt
+
+# Remove directories recursively
+xsaw rm -r ./OldFolder/
+
+# Verbose output (displays trash UUID and size)
+xsaw rm -v bar.png
 ```
 
-The original path is checked before restoration to prevent
-accidental overwrites.
+### Options
+
+* `-r, -R, --recursive`: Recursively remove directories and their contents.
+* `-f, --force`: Ignore non-existent files without error.
+* `-v, --verbose`: Display detailed file sizes and trash UUIDs.
+* `--purge, --empty-trash`: Completely empty trash vault instead of removing files.
+* `?`, `/?`, `help`: Display help message.
+
+---
+
+## Trash Purge (`purge`, alias `clean`, `empty-trash`)
+
+Permanently and irreversibly empty files from the trash vault:
+
+```bash
+xsaw purge
+# Or using the short alias
+xsaw clean
+```
+
+By default, xsaw issues an interactive confirmation prompt:
+```text
+WARNING: This operation permanently deletes items from the trash vault and cannot be undone!
+Are you sure you want to proceed? [y/N]: 
+```
+
+### Options
+
+* `-y, --yes`: Bypass interactive confirmation prompt.
+* `-f, --force`: Bypass confirmation prompt (alias for `-y`).
+* `--days <N>`: Only purge items older than N days (e.g. `xsaw purge --days 30`).
+
+---
+
+## Operation History (`log`, alias `l`, `history`)
+
+Inspect past operations stored in the SQLite database (`~/.xsaw/history.db`):
+
+```bash
+# View the 10 most recent operations
+xsaw log
+# Or using the short alias
+xsaw l -n 5
+```
+
+Example table output:
+```text
+ID    TIMESTAMP            TYPE     STATUS     DETAILS
+--------------------------------------------------------------------------------
+15    2026-09-07 10:50:12  REMOVE   ACTIVE     bar.png (UUID: a1b2c3d4...)
+14    2026-09-07 10:45:00  MOVE     ACTIVE     foo.txt -> archive/foo.txt
+13    2026-09-07 10:30:22  MOVE     ACTIVE     new.txt -> dest.txt [OVERWRITTEN]
+--------------------------------------------------------------------------------
+Showing 3 recent operations.
+```
+
+### Export to JSON (`-o`)
+```bash
+# Export the last 20 operations to log.json
+xsaw l -n 20 -o log
+```
+
+---
+
+## Undo & Redo (`undo`, alias `u` / `redo`, alias `re`)
+
+Roll back recent operations or advance previously undone operations:
+
+```bash
+# Undo the most recent operation
+xsaw undo
+# Or using the short 1-letter alias
+xsaw u
+
+# Undo a specific operation by UUID, batch ID, or operation ID
+xsaw undo <UUID>
+
+# Force overwrite if destination already has a file
+xsaw undo -f
+
+# Redo previously undone operations
+xsaw redo
+# Or using the alias
+xsaw re
+# Or via undo flag
+xsaw undo --redo
+```
+
+### Conflict Protection during Undo
+If the target location already has a file created after the operation, xsaw will not overwrite it unless `-f` (`--force`) is specified.
+
+---
+
+## Fast Content Search (`gr`, alias `g`)
+
+High-speed parallel text/regex search within files:
+
+```bash
+xsaw gr "TODO" .
+# Or using the short alias
+xsaw g "class" src/ -n
+```
+
+### Options
+* `-i, --ignore-case`: Case-insensitive pattern match.
+* `-n, --line-numbers`: Print 1-based line numbers.
+* `-v, --invert`: Invert match (print non-matching lines).
+* `-c, --count`: Only print count of matching lines.
+* `-r, --recursive`: Search directories recursively (default: true).
+* `-s, --case-sensitive`: Force case-sensitive match.
+
 
 ## Cross Platform
 
@@ -341,3 +411,8 @@ large directory trees and large numbers of files.
 * Improved restore support
 * Additional filesystem operations
 * More detailed output formats
+
+---
+
+<sub>Built with Antigravity</sub>
+

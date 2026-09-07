@@ -164,4 +164,64 @@ class HistoryDbTest {
         assertEquals(1, expired.size());
         assertEquals("old-uuid", expired.get(0).trashUuid());
     }
+
+    @Test
+    void testFindLatestRestoredBatchId() throws SQLException {
+        db.record(OperationRecord.create("batch-1", OperationType.MOVE, "/s1", "/d1", null, 1, false));
+        db.record(OperationRecord.create("batch-2", OperationType.MOVE, "/s2", "/d2", null, 2, false));
+
+        // 初期状態では RESTORED は存在しない
+        assertTrue(db.findLatestRestoredBatchId().isEmpty());
+
+        // batch-1 を RESTORED に更新
+        db.updateBatchStatus("batch-1", OperationStatus.RESTORED);
+        assertEquals("batch-1", db.findLatestRestoredBatchId().orElse(null));
+
+        // batch-2 も RESTORED に更新（最新は batch-2 になる）
+        db.updateBatchStatus("batch-2", OperationStatus.RESTORED);
+        assertEquals("batch-2", db.findLatestRestoredBatchId().orElse(null));
+    }
+
+    @Test
+    void testFindByBatchIdReverse() throws SQLException {
+        String batch = "batch-rev";
+        db.record(OperationRecord.create(batch, OperationType.MOVE, "/file1", "/dest1", null, 1, false));
+        db.record(OperationRecord.create(batch, OperationType.MOVE, "/file2", "/dest2", null, 2, false));
+
+        List<OperationRecord> asc = db.findByBatchId(batch, false);
+        assertEquals("/file1", asc.get(0).sourcePath());
+        assertEquals("/file2", asc.get(1).sourcePath());
+
+        List<OperationRecord> desc = db.findByBatchId(batch, true);
+        assertEquals("/file2", desc.get(0).sourcePath());
+        assertEquals("/file1", desc.get(1).sourcePath());
+    }
+
+    @Test
+    void testFindByIdentifierAndRecordStatus() throws SQLException {
+        String batch = "batch-xyz";
+        String trashUuid = "trash-uuid-999";
+        long id = db.record(OperationRecord.create(batch, OperationType.REMOVE, "/del.txt", null, trashUuid, 50, false));
+
+        // 1. レコードID（数値文字列）で検索
+        List<OperationRecord> byId = db.findByIdentifier(String.valueOf(id));
+        assertEquals(1, byId.size());
+        assertEquals(id, byId.get(0).id());
+
+        // 2. batch_id で検索
+        List<OperationRecord> byBatch = db.findByIdentifier(batch);
+        assertEquals(1, byBatch.size());
+        assertEquals(id, byBatch.get(0).id());
+
+        // 3. trash_uuid で検索
+        List<OperationRecord> byTrash = db.findByIdentifier(trashUuid);
+        assertEquals(1, byTrash.size());
+        assertEquals(id, byTrash.get(0).id());
+
+        // 単一レコードのステータス更新 & findById
+        db.updateRecordStatus(id, OperationStatus.RESTORED);
+        Optional<OperationRecord> updated = db.findById(id);
+        assertTrue(updated.isPresent());
+        assertEquals(OperationStatus.RESTORED, updated.get().status());
+    }
 }

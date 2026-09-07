@@ -21,7 +21,7 @@
 | **Operation History** | SQLite による操作履歴ロギング | ◯ | ◯ | **完了** (DB基盤・UUID金庫・rmログ・mvログ完了) |
 | **Conflict Handling** | 移動先の競合検知 & 対話型解決 (1〜5) | ◯ | ◯ | **完了** (対話プロンプト & 113 tests PASS) |
 | **Safe Delete** | 安全なゴミ箱削除 (`xsaw rm`, `r`) | ◯ | ◯ | **完了** (UUID隔離 & 30日パージ) |
-| **Restore** | 操作ロールバック (`xsaw undo`) | ◯ | ❌ | 🚨 **未実装** (履歴からの逆移動) |
+| **Restore** | 操作ロールバック (`xsaw undo`, `u`, `redo`) | ◯ | ◯ | **完了** (単体 & CLIテスト完備) |
 | **Planned Features** | 重複ファイル検知、ハッシュ計算など | ◯ (予定) | ❌ | 🔮 **将来構想** |
 
 ---
@@ -42,17 +42,19 @@
 
 ---
 
-### 🚨 乖離 2: SQLite による操作ログ (`Operation History`)
+### ✅ 乖離 2: SQLite による操作ログ (`Operation History`) 【解消済み】
 - **README の記述**:
-  全ファイル操作を SQLite に記録。保持情報：`Operation`, `Timestamp`, `Source path`, `Destination path`, `File size`, `Hash`, `Status`。
+  全ファイル操作を SQLite に記録。保持情報：`Operation`, `Timestamp`, `Source path`, `Destination path`, `File size`, `Status`。
 - **現在のコードベース**:
-  - `app/build.gradle.kts` に SQLite JDBC ドライバ（例: `org.xerial:sqlite-jdbc`）の依存関係が**未追加**。
-  - DB 接続管理、スキーマ初期化（DDL）、レコード保存のコードが存在しない。
-- **必要なタスク**:
-  - [ ] `build.gradle.kts` に `sqlite-jdbc` 依存関係を追加。
-  - [ ] SQLite データベースファイルの保存場所決定（例: `~/.xsaw/history.db` またはプロジェクトローカル `.xsaw.db`）。
-  - [ ] テーブル作成 DDL の定義（`CREATE TABLE IF NOT EXISTS operations (...)`）。
-  - [ ] 操作ログのエンティティクラス・DAO（Data Access Object）の実装。
+  - `app/build.gradle.kts` に `org.xerial:sqlite-jdbc` を導入。
+  - `history` パッケージに `HistoryDb`（WALモード、自動テーブルマイグレーション）、`TrashVault`（隔離金庫・30日自動パージ）、`XsawPaths`（`~/.xsaw/`）を実装。
+  - `mv`（上書き前バックアップ含む）および `rm` 実行時の完全自動ロギング。
+  - `xsaw log` (`l`) による履歴テーブル表示および `-o log` による JSON エクスポートを実装。
+- **完了タスク**:
+  - [x] `build.gradle.kts` に `sqlite-jdbc` 依存関係を追加。
+  - [x] SQLite データベースファイルの保存場所決定（`~/.xsaw/history.db`、テスト時は `xsaw.home` プロパティで完全分離）。
+  - [x] テーブル作成 DDL の定義（`CREATE TABLE IF NOT EXISTS operations (...)` & インデックス）。
+  - [x] 操作ログのエンティティクラス・DAO（`OperationRecord`, `HistoryDb`）の実装。
 
 ---
 
@@ -74,39 +76,38 @@
   - `App.java`（`MvCommand`）に対話プロンプト `promptConflictAction` を実装。
   - `[1] Overwrite`, `[2] Rename`, `[3] Skip`, `[4] Compare`, `[5] Cancel` の全分岐、ショートカット入力（`o`, `r`, `s`, `c`, `q`）、サイズ/日時の詳細比較を実装。
   - `-f`（強制上書き）、`-n`（スキップ）、`-d`（ドライラン）指定時は対話をバイパス。
-  - `MvTest.java`（単体）および `AppTest.java`（CLI対話入出力シミュレーション）でテスト完備（113 tests PASS）。
+  - `MvTest.java`（単体）および `AppTest.java`（CLI対話入出力シミュレーション）でテスト完備。
 - **完了タスク**:
   - [x] 移動先パスの重複チェック（`Files.exists(dest)`）。
   - [x] コンソール入力ハンドラ（`BufferedReader(System.in)`）による対話メニュー表示。
-  - [x] 各アクションのハンドリング：
-    - `[1] Overwrite`: 上書き移動。
-    - `[2] Rename`: 自動リネーム（例: `foo (1).zip`）。
-    - `[3] Skip`: 移動をスキップして終了コード 0。
-    - `[4] Compare`: ファイルサイズ・更新日時の比較表示。
-    - `[5] Cancel`: 操作全体の中断（終了コード 1）。
+  - [x] 各アクションのハンドリング（Overwrite / Rename / Skip / Compare / Cancel）。
   - [x] 非対話・自動化向けのフラグ（`-f`, `-n`, `-d`）対応。
 
 ---
 
-### 🚨 乖離 4: 操作の復元・取り消し (`xsaw undo`)
+### ✅ 乖離 4: 操作の復元・取り消し & 再適用 (`xsaw undo` / `redo`) 【解消済み】
 - **README の記述**:
   `xsaw undo <operation-id>` により、過去の操作を元に戻す。元のパスを事前にチェックして事故を防ぐ。
 - **現在のコードベース**:
-  - `UndoCommand`（または `xsaw undo`）が未定義。
-- **必要なタスク**:
-  - [ ] `UndoCommand` の追加。
-  - [ ] SQLite から指定 ID（または直近の操作）のレコードを取得。
-  - [ ] 移動元（逆操作先）にファイルが既に存在していないかの安全性検証。
-  - [ ] 逆方向移動の実行と、取り消し完了ログの記録。
+  - `undo/UndoEngine.java` による逆操作エンジン（`REMOVE` の復元、`MOVE` の逆移動、上書き移動時の二重復元、親ディレクトリ自動生成、コンフリクト保護）。
+  - `App.java` に `UndoCommand`（`undo`, `u`）および `RedoCommand`（`redo`, `re`）を実装。
+  - バッチID / UUID / 数値ID による指定復元、または引数なしでの直近操作自動復元に対応。
+  - `UndoEngineTest.java` および `AppTest.java` による包括的テスト完備。
+- **完了タスク**:
+  - [x] `UndoCommand` / `RedoCommand` の追加（`u`, `re` エイリアス対応）。
+  - [x] SQLite から指定 ID（または直近の操作）のレコードを取得（`findByIdentifier`）。
+  - [x] 移動元（逆操作先）にファイルが既に存在していないかの安全性検証（`-f` 強制上書き対応）。
+  - [x] 逆方向移動の実行と、取り消し完了ログのステータス更新（`RESTORED`）。
+  - [x] 巻き戻しを進める `redo` コマンドの実装（`ACTIVE` への復帰）。
 
 ---
 
 ## 3. 今後の推奨開発ステップ (Phase Plan)
 
 ```
-Phase 1: SQLite 基盤 & 基本の mv コマンド
+Phase 1: SQLite 基盤 & 基本の mv コマンド 【完了】
   ├── sqlite-jdbc の導入
-  ├── 履歴テーブルの設計・自動マイグレーション
+  ├── 履歴テーブルの設計・自動マイグレーション (HistoryDb, TrashVault)
   └── xsaw mv の基本移動 & ログ保存の実装
 
 Phase 2: 競合解決 (Conflict Handling) 【完了】
@@ -114,14 +115,17 @@ Phase 2: 競合解決 (Conflict Handling) 【完了】
   ├── 対話型プロンプト (Overwrite, Rename, Skip, Compare, Cancel)
   └── 自動ナンバリング生成 (generateUniquePath)
 
-Phase 3: 操作取り消し (xsaw undo)
-  ├── 履歴参照コマンド (xsaw history / log)
-  └── 逆移動による undo コマンドの実装
+Phase 3: 安全削除 & 操作取り消し (Safe Delete & Undo/Redo) 【完了】
+  ├── 安全なゴミ箱隔離 (xsaw rm, r) & 30日自動パージ
+  ├── ゴミ箱完全削除 (xsaw purge / clean) & 不可逆警告プロンプト
+  ├── 履歴参照・JSON出力コマンド (xsaw log / l)
+  └── 逆移動による undo / redo コマンドの実装 (UndoEngine)
 
-Phase 4: 機能強化 & 将来構想
+Phase 4: 機能強化 & 将来構想 (Planned Features)
   ├── ファイルハッシュ計算 (SHA-256)
   └── 重複ファイル検出 (Duplicate Detection)
 ```
+
 
 ---
 
@@ -146,5 +150,5 @@ Phase 4: 機能強化 & 将来構想
 - [x] `xsaw rm` / `r`: 安全なファイル・ディレクトリ削除（UUIDゴミ箱退避 & DBロギング）
 - [x] ファイル移動 (`mv`) の自動 SQLite ロギング & 上書き時バックアップ
 - [x] `xsaw log` / `l` / `history` コマンド（操作履歴の一覧表示 & `-o log` での JSON 出力）
-- [ ] `xsaw undo <id>` コマンド（ファイル移動・削除の取り消し・復元）
+- [x] `xsaw undo <id>` / `redo` コマンド（ファイル移動・削除の取り消し・復元 & 進める機能）
 - [x] `xsaw purge` / `clean` / `empty-trash` コマンド（ゴミ箱の不可逆完全削除 & 警告プロンプト）

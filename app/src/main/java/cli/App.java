@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.concurrent.Callable;
 import java.util.List;
 import java.util.ArrayList;
+import java.sql.SQLException;
 
 import du.*;
 import fi.*;
@@ -17,6 +18,7 @@ import mv.*;
 import gr.*;
 import rm.*;
 import history.*;
+import undo.*;
 
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
@@ -25,7 +27,7 @@ import picocli.CommandLine.Parameters;
 
 @Command(name = "xsaw", mixinStandardHelpOptions = true, version = "1.0.0",
         description = "Lists files in the current directory.",
-        subcommands = {App.DuCommand.class, App.FiCommand.class, App.MvCommand.class, App.GrepCommand.class, App.RmCommand.class, App.LogCommand.class, App.PurgeCommand.class})
+        subcommands = {App.DuCommand.class, App.FiCommand.class, App.MvCommand.class, App.GrepCommand.class, App.RmCommand.class, App.LogCommand.class, App.PurgeCommand.class, App.UndoCommand.class, App.RedoCommand.class})
 
 public class App implements Callable<Integer> {
     @Override
@@ -835,6 +837,123 @@ public class App implements Callable<Integer> {
                            .replace("\n", "\\n")
                            .replace("\r", "\\r")
                            .replace("\t", "\\t") + "\"";
+        }
+    }
+
+    @Command(name = "undo", aliases = {"u"}, mixinStandardHelpOptions = true,
+             description = "Undo recent file operations (restore moved or removed files).")
+    static class UndoCommand implements Callable<Integer> {
+
+        @Parameters(arity = "0..1", description = "Target UUID, batch ID, or operation ID to undo (default: latest operation)")
+        private String target;
+
+        @Option(names = {"-f", "--force"}, description = "Overwrite existing files when restoring")
+        private boolean force;
+
+        @Option(names = {"--redo"}, description = "Redo operations instead of undoing")
+        private boolean redo;
+
+        @Override
+        public Integer call() {
+            if ("?".equals(target) || "/?".equals(target) || "help".equalsIgnoreCase(target)) {
+                CommandLine.usage(this, System.out);
+                return 0;
+            }
+
+            try (HistoryDb db = new HistoryDb()) {
+                TrashVault vault = new TrashVault();
+                UndoEngine engine = new UndoEngine(db, vault);
+
+                if (redo) {
+                    return executeRedo(db, engine, target, force);
+                }
+
+                String batchId = target;
+                if (batchId == null || batchId.isBlank()) {
+                    var latest = db.findLatestActiveBatchId();
+                    if (latest.isEmpty()) {
+                        System.out.println("No active operation to undo.");
+                        return 0;
+                    }
+                    batchId = latest.get();
+                }
+
+                int count = engine.undoBatch(batchId, force);
+                if (count == 0) {
+                    System.out.println("No operations were undone (already restored or no matching records).");
+                } else {
+                    System.out.printf("Successfully undone %d operation(s).%n", count);
+                }
+                return 0;
+            } catch (IllegalArgumentException | IllegalStateException e) {
+                System.err.println("Undo error: " + e.getMessage());
+                return 1;
+            } catch (IOException e) {
+                System.err.println("File error during undo: " + e.getMessage());
+                return 1;
+            } catch (SQLException e) {
+                System.err.println("Database error during undo: " + e.getMessage());
+                return 1;
+            }
+        }
+    }
+
+    @Command(name = "redo", aliases = {"re"}, mixinStandardHelpOptions = true,
+             description = "Redo previously undone file operations.")
+    static class RedoCommand implements Callable<Integer> {
+
+        @Parameters(arity = "0..1", description = "Target UUID, batch ID, or operation ID to redo (default: latest undone operation)")
+        private String target;
+
+        @Option(names = {"-f", "--force"}, description = "Overwrite existing files when redoing")
+        private boolean force;
+
+        @Override
+        public Integer call() {
+            if ("?".equals(target) || "/?".equals(target) || "help".equalsIgnoreCase(target)) {
+                CommandLine.usage(this, System.out);
+                return 0;
+            }
+
+            try (HistoryDb db = new HistoryDb()) {
+                TrashVault vault = new TrashVault();
+                UndoEngine engine = new UndoEngine(db, vault);
+                return executeRedo(db, engine, target, force);
+            } catch (Exception e) {
+                System.err.println("Redo error: " + e.getMessage());
+                return 1;
+            }
+        }
+    }
+
+    private static int executeRedo(HistoryDb db, UndoEngine engine, String target, boolean force) {
+        try {
+            String batchId = target;
+            if (batchId == null || batchId.isBlank()) {
+                var latest = db.findLatestRestoredBatchId();
+                if (latest.isEmpty()) {
+                    System.out.println("No undone operation to redo.");
+                    return 0;
+                }
+                batchId = latest.get();
+            }
+
+            int count = engine.redoBatch(batchId, force);
+            if (count == 0) {
+                System.out.println("No operations were redone (already active or no matching records).");
+            } else {
+                System.out.printf("Successfully redone %d operation(s).%n", count);
+            }
+            return 0;
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            System.err.println("Redo error: " + e.getMessage());
+            return 1;
+        } catch (IOException e) {
+            System.err.println("File error during redo: " + e.getMessage());
+            return 1;
+        } catch (SQLException e) {
+            System.err.println("Database error during redo: " + e.getMessage());
+            return 1;
         }
     }
 
